@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layers:TimeBaseAssetsLayer xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:layers="view.layers.*" creationComplete="onCreationComplete(event)">
+	<mx:Metadata>
+		/**
+		*  The height of a clip
+		*/
+		[Style(name="clipHeight", type="Number", format="Length", inherit="no")]
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.events.KClipErrorCodes;
+			
+			import events.TimeBaseAssetEvent;
+			
+			import model.MediaClipVO;
+			
+			import mx.events.FlexEvent;
+			
+			import view.TimeBasedAssets.ClipItem;
+			import view.TimeBasedAssets.ITimeBasedAsset;
+			
+			//difference between start drag x and selected point x
+			private var _mouseXDiff:Number;
+			private var _startDragPoint:Number;
+			private var _startWidth:Number;
+			
+			private var _clipHeight:Number;
+			
+			override protected function onCreationComplete(event:FlexEvent):void
+			{
+				super.onCreationComplete(event);
+				_clipHeight = getStyle("clipHeight");
+			}
+			
+			public function createClipItem(timeInMS:Number, lengthInMS:Number, ratio:Number, mediaClip:MediaClipVO):ClipItem {
+				var maxLength:Number = getChildAt(0).width;
+				var position:Number = timeInMS * ratio + offset;
+				var length:Number = lengthInMS * ratio;
+				if (isNaN(position) || ((position + length) > maxLength)) {
+					dispatchMessageEvent(resourceManager.getString('clipper','cannotAddClipMsg'), KClipErrorCodes.CLIP_ADD_FAILED);
+					return null;
+				}
+				var clip:ClipItem = new ClipItem();
+				clip.assetVo = mediaClip;
+				clip.timeInMS = timeInMS;
+				clip.startX = position;
+				clip.assetWidth = length;
+				clip.lengthInMS = lengthInMS;
+				clip.height = _clipHeight;
+				
+				clip.addEventListener(MouseEvent.CLICK, onClipClick);
+				clip.addEventListener(MouseEvent.MOUSE_DOWN, onHandleDrag);
+				
+				return clip;
+			} 
+			
+			private function onClipClick(event:MouseEvent):void {
+				if (!selectedAsset || (event.currentTarget != selectedAsset))
+					setSelectedTimeBasedAsset(event.currentTarget as ITimeBasedAsset)
+				//dispatchEvent(new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_CLICK));
+			}
+			
+			private function onHandleDrag(event:MouseEvent):void {
+				onClipClick(event);
+				_startDragPoint = selectedAsset.startX;
+				_startWidth = selectedAsset.assetWidth;
+				
+				if (event.target == (selectedAsset as ClipItem).startHandle) {
+					_mouseXDiff = mouseX - selectedAsset.startX ;
+					stage.addEventListener(MouseEvent.MOUSE_UP, clipDropStartHandle);
+					stage.addEventListener(MouseEvent.MOUSE_MOVE, clipDragStartHandle);
+				}
+				else if (event.target == (selectedAsset as ClipItem).endHandle) {
+					_mouseXDiff = mouseX - selectedAsset.startX - selectedAsset.assetWidth;
+					stage.addEventListener(MouseEvent.MOUSE_UP, clipDropEndHandle);
+					stage.addEventListener(MouseEvent.MOUSE_MOVE, clipDragEndHandle);
+				}
+			}
+			
+			private function clipDragStartHandle(event:MouseEvent):void {
+				var newStart:Number = Math.max(Math.min(mouseX - _mouseXDiff , selectedAsset.startX + selectedAsset.assetWidth - (selectedAsset as ClipItem).endHandle.width - (selectedAsset as ClipItem).startHandle.width), offset);
+				selectedAsset.assetWidth += selectedAsset.startX - newStart;
+				selectedAsset.startX = newStart;
+				
+				var moveEvent:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_DRAG, selectedAsset);
+				dispatchEvent(moveEvent);
+			}
+			
+			private function clipDragEndHandle(event:MouseEvent):void {
+				var newEnd:Number = Math.min(Math.max( mouseX - _mouseXDiff , selectedAsset.startX + (selectedAsset as ClipItem).startHandle.width +(selectedAsset as ClipItem).endHandle.width) , rowsWidth - offset);
+				selectedAsset.assetWidth = newEnd - selectedAsset.startX ;
+				
+				var moveEvent:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_DRAG, selectedAsset);
+				dispatchEvent(moveEvent);
+			}
+			
+			private function clipDropStartHandle(event:MouseEvent):void {
+				stage.removeEventListener(MouseEvent.MOUSE_UP, clipDropStartHandle);
+				stage.removeEventListener(MouseEvent.MOUSE_MOVE, clipDragStartHandle);
+				var evt:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset);
+				dropHandler(evt);
+			}
+			
+			private function clipDropEndHandle(event:MouseEvent):void {
+				stage.removeEventListener(MouseEvent.MOUSE_UP, clipDropEndHandle);
+				stage.removeEventListener(MouseEvent.MOUSE_MOVE, clipDragEndHandle);
+				var evt:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_END_CHANGED, selectedAsset);
+				dropHandler(evt);
+			}
+			
+			private function dropHandler(event:TimeBaseAssetEvent):void {
+				if (!this.locateTimeBasedAsset(selectedAsset)) {
+					selectedAsset.startX = _startDragPoint;
+					selectedAsset.assetWidth = _startWidth;
+				}
+				else
+				{
+					dispatchEvent(event);
+				}
+			}
+			
+			override public function addToCanvas(asset:ITimeBasedAsset, addAsNew:Boolean, notSaved:Boolean = true):Boolean {
+				if (super.addToCanvas(asset, addAsNew)) {
+					dispatchMessageEvent("");
+					return true;
+				}
+				else {
+					dispatchMessageEvent(resourceManager.getString('clipper', 'cannotAddClipMsg'), KClipErrorCodes.CLIP_ADD_FAILED);
+					return false;
+				}
+			}
+			
+			override public function relocateTimeBasedAssets(ratio:Number, widthRatio:Number):void {
+				for (var i:int = 0; i<tbAssetsArr.length; i++) {
+					var clip:ClipItem = tbAssetsArr[i] as ClipItem; 
+					clip.startX = (clip.timeInMS * ratio) + offset;
+					clip.assetWidth *= widthRatio;
+				} 
+			}
+			
+			override protected function locateTimeBasedAsset(asset:ITimeBasedAsset):Boolean {
+				if (super.locateTimeBasedAsset(asset)) {
+					dispatchMessageEvent("");
+					return true;
+				}
+				else {
+					dispatchMessageEvent(resourceManager.getString('clipper', 'cannotAddClipMsg'), KClipErrorCodes.CLIP_ADD_FAILED);
+					return false;
+				}
+			}
+			
+			/**
+			 * delete the selected cue point
+			 * */
+			override public function removeSelected():ITimeBasedAsset{
+				if (!selectedAsset) {
+					dispatchMessageEvent(resourceManager.getString('clipper','deleteClipMsg'), KClipErrorCodes.SELECT_CLIP);
+					return null;
+				}
+				
+				dispatchMessageEvent("");
+				return super.removeSelected();
+			}
+
+			/**
+			 * update start X
+			 * */
+			override public function updateSelectedStartX(timeInMS:Number, ratio:Number):void {
+				if (!selectedAsset) {
+					dispatchMessageEvent(resourceManager.getString('clipper','selectUpdateClipMsg'), KClipErrorCodes.SELECT_CLIP);
+				}
+				else {
+					var oldStart:Number = selectedAsset.startX;
+					selectedAsset.startX = timeInMS * ratio + offset;
+					if (this.locateTimeBasedAsset(selectedAsset)) {
+						selectedAsset.timeInMS = timeInMS;
+						var event:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset, false);
+						dispatchEvent(event);
+						var event2:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_END_CHANGED, selectedAsset, false);
+						dispatchEvent(event2);
+						dispatchMessageEvent("");
+					}
+					else {
+						selectedAsset.startX = oldStart;
+					}
+				}
+			}
+			
+			/**
+			 * update the given width and start
+			 * */
+			public function updateSelectedAssetValues(newStart:Number, newLength:Number, ratio:Number):void {
+				if (!selectedAsset) {
+					dispatchMessageEvent(resourceManager.getString('clipper','selectUpdateClipMsg'), KClipErrorCodes.SELECT_CLIP);
+				}
+				else {
+					var oldWidth:Number = selectedAsset.assetWidth;
+					var oldX:Number = selectedAsset.startX;
+					var oldStartTime:Number = selectedAsset.timeInMS;
+					var oldLength:Number = (selectedAsset as ClipItem).lengthInMS;
+					
+					selectedAsset.assetWidth = newLength* ratio;
+					selectedAsset.startX = newStart * ratio + offset;
+					if (this.locateTimeBasedAsset(selectedAsset)) {
+						if (newStart!=oldStartTime) {
+							selectedAsset.timeInMS = newStart;
+							var event:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset, false);
+							dispatchEvent(event);
+						}
+						if (newLength !=oldLength) {
+							(selectedAsset as ClipItem).lengthInMS = newLength;
+							var event2:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_END_CHANGED, selectedAsset, false);
+							dispatchEvent(event2);
+						}
+						dispatchMessageEvent("");
+					}
+					else {
+						selectedAsset.assetWidth = oldWidth;
+						selectedAsset.startX = oldX;
+					}
+				}
+			}
+			
+			override public function updateAssetVo(assetVO:Object, ratio:Number):Boolean {
+				var oldX:Number;
+				var oldLength:Number;
+				if (selectedAsset) {
+					oldX = selectedAsset.startX;
+				}
+				if (super.updateAssetVo(assetVO, ratio)) {
+					var newLength:Number = (selectedAsset as ClipItem).lengthInMS * ratio;
+					if ((oldX!=selectedAsset.startX) || (selectedAsset.assetWidth!=newLength))
+						dispatchEvent(new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_END_CHANGED, selectedAsset));
+					selectedAsset.assetWidth =	newLength;				
+					return true;
+				}
+				else
+				{
+					dispatchMessageEvent(resourceManager.getString('clipper','updateClipMSg'), KClipErrorCodes.SELECT_CLIP);
+					return false;
+				}
+			}
+
+			
+		]]>
+	</mx:Script>
+</layers:TimeBaseAssetsLayer>

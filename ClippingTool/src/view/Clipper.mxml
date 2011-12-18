@@ -1,0 +1,1290 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" 
+		   xmlns:clipper="model.*"
+		   preinitialize="onPreInitialize(event)"
+		   horizontalScrollPolicy="off" xmlns:view="view.*" xmlns:layers="view.layers.*" enabled="{!(_isChanging || isLoading || _externalDisable)}" xmlns:clipperTimeline="model.clipperTimeline.*" xmlns:utils="view.layers.utils.*">
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.events.KClipErrorCodes;
+			import com.kaltura.events.KClipEventTypes;
+			import com.kaltura.types.KalturaCuePointType;
+			import com.kaltura.vo.KalturaAdCuePoint;
+			import com.kaltura.vo.KalturaAnnotation;
+			import com.kaltura.vo.KalturaBaseEntry;
+			import com.kaltura.vo.KalturaClipAttributes;
+			import com.kaltura.vo.KalturaCodeCuePoint;
+			import com.kaltura.vo.KalturaCuePoint;
+			import com.kaltura.vo.KalturaMediaEntry;
+			import com.kaltura.vo.KalturaPlayableEntry;
+			
+			import events.BaseEntryEvent;
+			import events.ClipperExternalEvent;
+			import events.ClipperMessageEvent;
+			import events.CuePointEvent;
+			import events.SaveEvent;
+			import events.TimeBaseAssetEvent;
+			
+			import model.MediaClipVO;
+			import model.MessageVO;
+			import model.ZoomBoxValue;
+			import model.ZoomBoxValueType;
+			import model.clipperTimeline.ClipperSlider;
+			import model.clipperTimeline.IClipperBehaviour;
+			
+			import mx.collections.ArrayCollection;
+			import mx.events.FlexEvent;
+			import mx.events.SliderEvent;
+			import mx.utils.UIDUtil;
+			
+			import view.TimeBasedAssets.ClipItem;
+			import view.TimeBasedAssets.CuePointBtn;
+			import view.TimeBasedAssets.ITimeBasedAsset;
+			import view.TimeBasedAssets.NullTimeBasedAsset;
+			import view.behaviours.ClippingBehaviour;
+			import view.itemRenderers.FrameIR;
+			import view.layers.TimeBaseAssetsLayer;
+
+			//-------------------------------------
+			// Constants
+			//-------------------------------------		
+			public static const CUE_POINTS_STATE:String = "cuePointsState";
+			public static const CLIPPING_STATE:String = "clippingState";
+			public static const TRIMMING_STATE:String = "trimmingState";
+			
+			public static const MS_PER_FRAME:int = 30;
+			public static const MAX_ALLOWED_ROWS:int = 5;
+			public static const MIN_CLIP_LENGTH:int = 100;
+			public static const DEFAULT_CLIP_SIZE:Number = 30;	
+			
+			static public var defaultBehaviourClass:Class = ClippingBehaviour;
+			private const LIST_OFFSET:int = 30;		
+			// time formats for labels
+			private const LABEL_FORMAT:String = "JJ:NN:SS:QQQ";
+			private const HOUR_FORMAT:String = "JJ:NN";
+			private const HOUR_AND_SOCEND_FORMAT:String = "JJ:NN:SS";
+			private const SINGLE_HOUR_AND_SOCEND_FORMAT:String = "J:NN:SS";
+			private const SINGLE_HOUR_FORMAT:String = "J:NN";
+			private const MINUTE_FORMAT:String = "NN:SS";
+			private const SECOND_FORMAT:String = "SS:QQ";
+			private const MS_PER_HOUR:int = 60*60*1000;
+			private const MS_PER_MINUTE:int = 60*1000;
+			///////////////////////////////////////////////////
+
+			//-----------------------------
+			//to be used in "frames" zoom
+			//-----------------------------
+			//create thumbnail with WIDTH_RATIO:HEIGHT_RATIO aspect ratio
+			private const HEIGHT_RATIO:int = 3;
+			private const WIDTH_RATIO:int = 4;
+			[Bindable]
+			public var imgWidth:int;
+			[Bindable]
+			public var imgHeight:int;
+			[Bindable] 
+			private var _thumbAc : ArrayCollection;
+			[Bindable]
+			private var _showThumbs:Boolean = false;
+			
+			//slider params
+			[Bindable]
+			private var _sliderValuesArr:Array;
+			[Bindable]
+			private var _sliderLabelsArr:Array;
+			private var _oldSmallTickLength:Number;
+			private var _oldBigTickLength:Number;
+			
+			private var _entry:KalturaBaseEntry;
+			[Bindable]
+			private var _slider:ClipperSlider;
+			[Bindable]
+			public var zoomValues:Array ;
+			//indicates if we have an earlier ratio to multiply slider width in
+			private var _oldRatio:Number = 1;
+			//the ratio that the slider width was changed by
+			private var _widthRatio:Number = 1;
+			//to be used for thumbnails requests
+			[Bindable]
+			public var serverUrl:String;
+			private var _message:MessageVO;	
+			[Bindable]
+			private var _messageText:String;
+			private var _labelFormatString:String;
+			private var _maxAllowedRows:int;
+
+			[Embed(source="assets/flash/loaderwhite.swf")]
+			private static const progressImage:Class;			
+			[Bindable]
+			private var _isChanging:Boolean;
+			[Bindable]
+			private var _externalDisable:Boolean;
+			[Bindable]
+			private var _activeLayer:TimeBaseAssetsLayer;
+			[Bindable]
+			/**
+			 * is waiting for server response
+			 * */
+			public var isLoading:Boolean;		
+			[Bindable]
+			public var showAddDeleteBtns:Boolean = true;
+			[Bindable]
+			public var showMessageBox:Boolean = true;
+			[Bindable]
+			public var showControlBar:Boolean = true;
+			
+			[Bindable]
+			public var behaviour:IClipperBehaviour;
+			
+			private var _scrollingFrames:Boolean = false;
+			private var _oldScrollPercentage:Number;
+			private var _itemsAC:ArrayCollection;
+			private var _deletedItemsAC:ArrayCollection;
+			private var _updatedItemsAC:ArrayCollection;
+			private var _addedItemsAC:ArrayCollection;
+			[Bindable]
+			/**
+			 * is the slider ready and assets can be added to it
+			 * */
+			private var _isReady:Boolean;
+			private var _entryId:String;
+			public var cuePointType:String = KalturaCuePointType.AD;
+			private var _saveCompleted:Boolean;
+			private var _saveFailed:Boolean;
+			private var _dispatchEntryReady:Boolean = false;
+			/**
+			 * indicate if playhead is currently being drag. would not be updated
+			 * externally in this case 
+			 * */
+			private var _draggingPlayhead:Boolean = false;
+			
+			private var _originalScrollSize:Number;
+
+			
+			override public function set width(value:Number):void {
+				super.width = value;
+				if (_isReady) {
+					_slider.tickInterval = 0;
+					zoomBox.selectedIndex = 0;
+					_dispatchEntryReady = false;
+					onZoomBoxChange();
+				}
+			}
+			
+			public function get saveFailed():Boolean
+			{
+				return _saveFailed;
+			}
+			
+
+			public function set saveFailed(value:Boolean):void
+			{
+				_saveFailed = value;
+				if (value) {
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.SAVED, false, true));
+					//reset to previous state
+					addItems();
+					//event was already dispatched. This is only for the Clipper message
+					_messageText = resourceManager.getString('clipper','saveFailed');
+				}
+			}
+
+			public function get saveCompleted():Boolean
+			{
+				return _saveCompleted;
+			}
+
+			public function set saveCompleted(value:Boolean):void
+			{
+				_saveCompleted = value;
+				if (value) {
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.SAVED, value, true));
+					resetAllItems();
+				}
+			}
+			
+			/**
+			 * return true if at least one of the changeable arrays is populated
+			 * */
+			public function isSaveRequired():Boolean {
+				if ((_addedItemsAC && _addedItemsAC.length) ||
+					(_updatedItemsAC && _updatedItemsAC.length) ||
+					(_deletedItemsAC && _deletedItemsAC.length))
+					return true;
+				
+				return false;
+			}
+
+			[Bindable]
+			public function get message():MessageVO
+			{
+				return _message;
+			}
+
+			public function set message(value:MessageVO):void
+			{
+				_messageText = value.messageText;
+				if (_messageText && _messageText!='')
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CLIPPER_ERROR, value, true));
+			}
+
+			[Bindable]
+			/**
+			 * the displayed timeBased assets on the timeline
+			 * */
+			public function get itemsAC():ArrayCollection
+			{
+				return _itemsAC;
+			}
+
+			public function set itemsAC(value:ArrayCollection):void
+			{
+				_itemsAC = value;
+				addItems();
+			}
+
+			/**
+			 * add asset to the updated list, if it hasn't been added yet
+			 * */
+			private function addToUpdatesList(assetVo:Object):void {
+				if (assetVo is KalturaCuePoint) {
+					var assetFound:Boolean = false;
+					for (var i:int = 0; i< _addedItemsAC.length; i++ ) {
+						if (_addedItemsAC[i]["id"]==assetVo["id"]) {
+							_addedItemsAC.removeItemAt(i);
+							_addedItemsAC.addItem(assetVo);
+							assetFound = true;
+							break;
+						}
+					}
+					if (!assetFound) {
+						for (var j:int = 0; j < _updatedItemsAC.length; j++) {
+							if (_updatedItemsAC[j]["id"] == assetVo["id"]) {
+								_updatedItemsAC.removeItemAt(j);
+								_updatedItemsAC.addItem(assetVo);
+								assetFound = true;
+								break;
+							}
+						}
+					}
+					if (!assetFound)
+						_updatedItemsAC.addItem(assetVo);
+				}
+			}
+			
+			/**
+			 * will locate the playhead on the new location. After the slider will send update_complete
+			 * event, the changed cue point will be updated with its new time
+			 * */
+			private function onTimeBasedAssetLocChanged(event:TimeBaseAssetEvent):void {
+				var asset:ITimeBasedAsset = event.timeBasedAsset;
+				//if update wasn't external
+				if ((event as TimeBaseAssetEvent).updateTime) {
+					var startX:Number = asset.startX;
+					
+					// Snap to end fix - QC 1031
+					var pixelsPerMS:Number = _slider.getTrackWidth() / _slider.maximum;
+					var max:Number = _slider.getTrackWidth() + _activeLayer.offset
+					var currLoc:Number = startX + pixelsPerMS * _slider.tickInterval * 0.2;
+					currLoc += asset is CuePointBtn ? asset.assetWidth/2 : 0;
+					if (currLoc > max){
+						startX = max;
+						asset.startX = max;
+						asset.timeInMS = _slider.maximum;
+					}  else {
+						
+						// This is the original code before the "snap to end" feature.
+						if (asset is CuePointBtn) //cue point start X is the center of it
+							startX += asset.assetWidth/2;
+	
+						asset.timeInMS = (startX - _activeLayer.offset)* (_slider.maximum / _slider.getTrackWidth());
+					}
+				}
+				else {
+					scrollToNewLocation(asset.startX, _slider.getThumbAt(0).width, true);
+				}
+				updatePlayhead(asset.timeInMS);
+			
+				var notifyEvent:ClipperExternalEvent;
+				if (asset is ClipItem) {
+					(asset as ClipItem).lengthInMS = asset.assetWidth * (_slider.maximum / _slider.getTrackWidth());
+					notifyEvent = new ClipperExternalEvent(KClipEventTypes.CLIP_START_CHANGED, asset.assetVo, true);
+				}
+				else {
+					notifyEvent = new ClipperExternalEvent(KClipEventTypes.CUE_POINT_CHANGED, asset.assetVo, true);
+				}				
+				dispatchEvent(notifyEvent);
+				addToUpdatesList(asset.assetVo);
+			}
+
+			/**
+			 * will update asset length and dispatch change event
+			 * */
+			private function onClipEndChanged(event:TimeBaseAssetEvent):void {
+				var asset:ITimeBasedAsset = event.timeBasedAsset;
+				if (asset is ClipItem) {
+					(asset as ClipItem).lengthInMS = asset.assetWidth * (_slider.maximum / _slider.getTrackWidth());
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CLIP_END_CHANGED, asset.assetVo, true));
+				}
+				addToUpdatesList(asset.assetVo);
+			}
+			
+			/**
+			 * scroll to the new location of the asset
+			 * */
+			private function onTimeBasedAssetDrag(event:TimeBaseAssetEvent) : void {
+				scrollToNewLocation(event.timeBasedAsset.startX, event.timeBasedAsset.assetWidth);
+			}
+		
+			[Bindable]
+			public function get maxAllowedRows():int
+			{
+				return _maxAllowedRows;
+			}
+
+			/**
+			 * set the given max allowed rows. If the given value is larger than MAX_ALLOWED_ROWS, will assign the MAX_ALLOWED_ROWS
+			 * */
+			public function set maxAllowedRows(value:int):void
+			{
+				_maxAllowedRows = (value > MAX_ALLOWED_ROWS) ? MAX_ALLOWED_ROWS : value;
+				
+			}
+
+			[Bindable]
+			/**
+			 * the entry to edit
+			 * */
+			public function get entry():KalturaBaseEntry
+			{
+				return _entry;
+			}
+
+			public function set entry(value:KalturaBaseEntry):void
+			{
+				_entry = value;
+				var duration:Number  = (_entry as KalturaPlayableEntry).msDuration;
+				if (duration) {
+					if (!_slider) {
+						_slider = new ClipperSlider;
+						_slider.addEventListener(FlexEvent.CREATION_COMPLETE, onSliderCreationComplete, false, 0, true);
+						_slider.height = sliderCanvas.height;
+						_slider.minimum = 0;
+						_slider.liveDragging = true;
+						_slider.dataTipFormatFunction = buildLabel;
+						_slider.allowTrackClick = true;
+						_slider.addEventListener(SliderEvent.THUMB_DRAG, onSliderDrag, false, 0, true);
+						_slider.addEventListener(SliderEvent.THUMB_RELEASE, onSliderDrop, false, 0, true);
+						_slider.addEventListener(SliderEvent.CHANGE, onSliderChange, false, 0, true);
+						_slider.addEventListener(SliderEvent.THUMB_PRESS, onThumbPress, false, 0, true);
+						_slider.addEventListener(MouseEvent.CLICK, onThumbClick, false, 0, true);
+						sliderCanvas.addChild(_slider);	
+						_slider.maximum = duration;
+					}
+					else {
+						_slider.maximum = duration;
+						_slider.tickInterval = 0;
+						zoomBox.selectedIndex = 0;
+						_dispatchEntryReady = true;
+						onZoomBoxChange();
+					}
+					
+					cuePointsLayer.maximumTime = duration;
+					controlBox.enabled = true;
+				}
+				else
+					controlBox.enabled = false;
+				
+			}
+			
+			/**
+			 * The entry that will be edited
+			 * */
+			public function set entryId(entryId:String):void {
+				trace ("kclip entry Id: " + entryId);
+				_entryId = entryId;
+				_isReady = false;
+				this.dispatchEvent(new BaseEntryEvent(BaseEntryEvent.GET, entryId, true));
+				if (this.currentState == CUE_POINTS_STATE)
+					dispatchEvent(new CuePointEvent(CuePointEvent.LIST_CUE_POINTS, entryId, cuePointType,true));
+				else {
+					itemsAC = new ArrayCollection();
+				}
+			}
+			
+			private function resetAllItems():void {
+				_addedItemsAC = new ArrayCollection();
+				_updatedItemsAC = new ArrayCollection();
+				_deletedItemsAC = new ArrayCollection();
+			}
+			
+			public function get entryId():String {
+				return _entryId;
+			}
+			
+			/**
+			 * calculate width and height for thumbnails. Thumbnails will be in 4:3 aspect ratio.
+			 * */
+			private function onSliderCreationComplete(event:FlexEvent):void
+			{
+				imgHeight = thumbsList.height;
+				imgWidth = (imgHeight*WIDTH_RATIO)/HEIGHT_RATIO;
+				
+				_oldBigTickLength = _slider.getStyle("bigTickLength");
+				_oldSmallTickLength = _slider.getStyle("smallTickLength");
+				_dispatchEntryReady = true;
+				onZoomBoxChange();
+			}
+			
+			/**
+			 * will set zoom according to zoomBox  item
+			 * */
+			private function onZoomBoxChange():void {
+				_isChanging = true;
+				
+				
+				
+				switch ((zoomBox.selectedItem as ZoomBoxValue).valueInMS) {
+					case ZoomBoxValueType.MAX_VALUE:
+						var tickInterval:int = calculateTicksForMax();
+						//first time
+						if (!_slider.tickInterval) {
+							_slider.width = this.width;
+							_slider.tickInterval = tickInterval;
+							_slider.scrollPos = 0;
+							_slider.addEventListener(ClipperSlider.LAYOUT_TICKS_COMPLETED, ticksReady);
+						}
+						else {
+							reCalculateWidth(tickInterval);
+						}
+						_slider.scrollPos = 0;
+						hScrollBar.maxScrollPosition = 0;
+						getLabelFormat(false);
+						break;
+					case ZoomBoxValueType.MIN_VALUE:
+						hideSliderTop();
+//						populateThumbnails();
+						reCalculateWidth(MS_PER_FRAME, imgWidth);
+//						reCalculateWidthForFrames(MS_PER_FRAME);
+						_showThumbs = _supposedShowThumbs;
+						break;
+					default:
+						var value:int = parseInt((zoomBox.selectedItem as ZoomBoxValue).valueInMS);
+						reCalculateWidth(value);
+						if (value < MS_PER_MINUTE)
+							getLabelFormat(true)
+						else
+							getLabelFormat(false)
+						break;	
+				}
+				
+				populateThumbnails();
+												
+				// Setting the thumbnails view off if zoom min_value is no longer selected.
+				if ((zoomBox.selectedItem as ZoomBoxValue).valueInMS==ZoomBoxValueType.MIN_VALUE) {
+					
+					// Changing the lineScrollSize to make the scroller move an entire thumbnail on each "jump", and saving the original "jump" size.
+					_originalScrollSize = hScrollBar.lineScrollSize;
+					hScrollBar.lineScrollSize = imgWidth;
+					hScrollBar.pageScrollSize = imgWidth;
+					hScrollBar.stepSize = imgWidth;
+				} else {
+					_showThumbs = false;
+					setTickValues();
+					setLabels();
+					
+					// Changing the lineScrollSize back to its original value
+					if (! isNaN(_originalScrollSize)){
+						hScrollBar.lineScrollSize =  _originalScrollSize;
+						hScrollBar.pageScrollSize = 0;
+						hScrollBar.stepSize = 0.1;
+					}
+				}
+				
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.ZOOM_CHANGED, (zoomBox.selectedItem as ZoomBoxValue).valueInMS, true));
+			}
+			
+			/**
+			 * The slider and its ticks are ready
+			 * */
+			private function ticksReady(event:Event):void {
+				_slider.removeEventListener(ClipperSlider.LAYOUT_TICKS_COMPLETED, ticksReady);
+				_activeLayer.offset = _slider.getTrackX() - _slider.x;
+				_isChanging = false;
+				_isReady = true;
+				_slider.value = 0;
+
+				addItems();
+				
+				if (_dispatchEntryReady)  {
+					trace ("kclip entry ready");
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.ENTRY_READY, entry.id, true));			
+				}
+					
+			}
+			
+			/**
+			 * add preset items
+			 * */
+			private function addItems():void {
+				
+				if (_isReady && _itemsAC && _activeLayer) {	
+					//reset old points
+					_activeLayer.removeAll();
+					resetAllItems();
+					if (this.currentState == CUE_POINTS_STATE) {
+						for each (var item:KalturaCuePoint in _itemsAC) 
+							addCuePointAt(item.startTime, item, false);
+					}
+					//no need to handle clips - no need to load saved clips
+				}
+			}
+		
+			/**
+			 * sets labels format according to video length. if forceSeconds= true will display seconds anyway
+			 * */
+			private function getLabelFormat(forceSeconds:Boolean):void {
+				if (_slider.maximum < MS_PER_HOUR) {
+					if (_slider.maximum < MS_PER_MINUTE)
+						_labelFormatString = SECOND_FORMAT;
+					else
+						_labelFormatString = MINUTE_FORMAT;
+				}
+				else if (_slider.maximum < (MS_PER_HOUR * 9)) {
+					if (forceSeconds)
+						_labelFormatString = SINGLE_HOUR_AND_SOCEND_FORMAT;
+					else
+						_labelFormatString = SINGLE_HOUR_FORMAT;
+				}
+				else {
+					if (forceSeconds)
+						_labelFormatString = HOUR_AND_SOCEND_FORMAT;
+					else
+						_labelFormatString = HOUR_FORMAT;
+				}
+			}
+			
+			/**
+			 * will set the slider layer on top, to enable its thumb
+			 * */
+			private function onThumbPress(event:SliderEvent):void {
+				_draggingPlayhead = true;
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.PLAYHEAD_DRAG_START, _slider.value, true));
+				resetMessage();
+			}
+		
+			/**
+			 * will set the slider layer on back, to enable clicking on cue points and clips 
+			 * */
+			private function onThumbClick(event:MouseEvent):void {
+				resetMessage();
+			}		
+		
+			private var _lastTickDistance:Number;
+			private var _supposedShowThumbs:Boolean = true;
+			/**
+			 * gives the slider new width, according to size of new tick interval
+			 * The tickDistance argument shouldn't be sent two times consequentively, otherwise, the algorithm won't work properly.
+			 * */
+			private function reCalculateWidth(newInterval:int, tickDistance:Number = NaN):void {
+				sliderCanvas.addEventListener(FlexEvent.UPDATE_COMPLETE, onCanvasUpdateComplete);
+				var ratio:Number;
+				
+				// Checking if the transition is between two "stadard" resolutions (not frames).
+				if (isNaN(tickDistance) && isNaN(_lastTickDistance) ){
+					ratio = _slider.tickInterval / newInterval;
+				} else{
+					
+					// Calculating the current tick distance to take in account when calculating the ratio.
+					var numOfTicks:uint = _slider.maximum / _slider.tickInterval; 
+					var currTickDistance:Number = _slider.width / numOfTicks;
+					
+					// Checking if the transition is back between a custom resolution and a standard one.
+					if (isNaN(tickDistance)){
+						ratio = _slider.tickInterval / newInterval * _lastTickDistance / currTickDistance;
+						_lastTickDistance = NaN;
+						
+					// In this case the transition is between a standard resolution and a custom one.
+					} else {
+						ratio = _slider.tickInterval / newInterval * tickDistance / currTickDistance;
+						_lastTickDistance = currTickDistance;
+					}
+				}
+				_slider.tickInterval = newInterval;
+				var newWidth:Number;
+				
+				// Using the thumbnail count and size to calculate the the newWidth, to help prevent cummulative mathematical imprecissions later on.
+				if (isNaN(tickDistance)){
+					newWidth = _slider.width * ratio * _oldRatio;
+				} else {
+					
+					// TODO: Change this line to correspond with the rest of the method- any other value sent for tickDistance other than imgWidth won't work because of this.
+					// Previous attempts to do so failed due to mathematical imprecissions. -Biton.
+					newWidth = _thumbAc.length * imgWidth;
+				}
+				
+				if (newWidth < sliderCanvas.width) {
+					_widthRatio = sliderCanvas.width / _slider.width;
+					_slider.width = sliderCanvas.width;
+					//will remember the ratio the slider width was changed by, for next time
+					_oldRatio = (newWidth / _slider.width);
+				}
+				else {
+					_widthRatio = newWidth / _slider.width;
+					_slider.width = newWidth ;
+					//resets old ratio;
+					_oldRatio = 1;			
+				}
+				hScrollBar.maxScrollPosition=_slider.width - sliderCanvas.width;
+				_slider.invalidateDisplayList();
+				sliderCanvas.invalidateDisplayList();
+				hScrollBar.invalidateDisplayList(); 		
+			}
+			
+			/**
+			 * slider canvas was updates with the new length of the slider
+			 * */
+			private function onCanvasUpdateComplete(event:FlexEvent):void{
+				sliderCanvas.removeEventListener(FlexEvent.UPDATE_COMPLETE, onCanvasUpdateComplete);
+				var pixelsPerMS:Number = _slider.getTrackWidth() / _slider.maximum;
+				_activeLayer.offset = _slider.getTrackX() - _slider.x;
+				_activeLayer.relocateTimeBasedAssets(pixelsPerMS, _widthRatio);
+				var sliderVal:Number = _slider.value;
+				scrollToNewLocation(_slider.getThumbAt(0).x , _slider.getThumbAt(0).width ,true);
+				_slider.value = sliderVal;
+				_isChanging = false;
+			}
+			
+			
+			
+			/**
+			 * adjust the list and the slider scroll position to the bottom scrollbar
+			 * */
+			private function onScrollbarScroll(event:Event):void {	
+			 	if ((zoomBox.selectedItem as ZoomBoxValue).valueInMS==ZoomBoxValueType.MIN_VALUE) {
+					stage.addEventListener(MouseEvent.MOUSE_UP,  onMouseUp);
+					_scrollingFrames = true;
+					//will load thumbnails only on mouse up
+					FrameIR.loadThumb = false;
+				} 
+
+				scrollClipper();							
+			}
+			
+			/**
+			 * update the playhead and dispatch a change event
+			 * */
+			private function updatePlayhead(value:Number):void {
+				_slider.value = value;
+				
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.PLAYHEAD_UPDATED, _slider.value, true));
+			}
+			
+			/**
+			 * scroll the whole clipper
+			 * */
+			private function scrollClipper(movePlayhead:Boolean = true):void {
+				if (hScrollBar.maxScrollPosition!=0) {
+					var ratio:Number = hScrollBar.scrollPosition / hScrollBar.maxScrollPosition;
+					if (thumbsList.maxHorizontalScrollPosition != 0){
+						thumbsList.horizontalScrollPosition =  Math.round(thumbsList.maxHorizontalScrollPosition * ratio);
+						ratio = thumbsList.horizontalScrollPosition / thumbsList.maxHorizontalScrollPosition;
+					}
+
+					//remember old to relocate the playhead on the new scroll
+					var oldScrollPos:Number = sliderCanvas.horizontalScrollPosition;
+					updateSliderCanvasScroll(sliderCanvas.maxHorizontalScrollPosition* ratio);
+					var scrollDif:Number = sliderCanvas.horizontalScrollPosition - oldScrollPos;
+					if (movePlayhead){
+						updatePlayhead(_slider.value + (scrollDif * (_slider.maximum / _slider.getTrackWidth())));
+					}
+					_activeLayer.horizontalScrollPosition = _activeLayer.maxHorizontalScrollPosition * ratio;
+				}
+				resetMessage();
+			}
+			 
+			/**
+			 * on slider thumb drag - if thumb is out of visible bounds- scroll to the right place 
+			 * */
+			private function onSliderDrag (event:SliderEvent) : void {
+				scrollToNewLocation(_slider.getThumbAt(0).x, _slider.getThumbAt(0).width);
+				resetMessage();
+			}
+			/**
+			 * on slider value change - dispatch change event 
+			 * */
+			private function onSliderChange (event:SliderEvent) : void {
+				
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.PLAYHEAD_UPDATED, _slider.value, true));
+			}
+			
+			/**
+			 * on slider thumb drag drop - dispatch drop event 
+			 * */
+			private function onSliderDrop (event:SliderEvent = null) : void {
+				if (_draggingPlayhead) {
+					
+					// Consider moving this to a behvaiour class sometime. -Biton.
+					// Checking if we're in cue points mode.
+					if (currentState == CUE_POINTS_STATE){
+						
+						// Checking if there's any cue points that are close enough to the playhead for a snap movement, and choosing the closest.
+						var closest:ITimeBasedAsset;
+						var closestDist:Number;
+						for each (var cp:ITimeBasedAsset in _activeLayer.tbAssetsArr){
+							var distance:Number = Math.abs(cp.timeInMS - _slider.value);
+							if (distance <= _slider.tickInterval * 0.2 && (closest == null || distance < closestDist)){
+								closest = cp;
+								closestDist = distance
+							}
+						}
+						
+						// If any close cue point is found, the playhead snaps to it.
+						if (closest != null){
+							updatePlayhead(closest.timeInMS);
+						}
+					}
+					
+					_draggingPlayhead = false;
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.PLAYHEAD_DRAG_DROP, _slider.value, true));
+				}
+			}
+			
+			/**
+			 * scroll to the playhead location, to make sure it will always be inside screen bounderies.
+			 * */
+			private function scrollToNewLocation(newX:Number, componentWidth:Number, centerPlayhead:Boolean = false, movePlayhead:Boolean = true) : void {
+				
+				if (centerPlayhead) {
+					hScrollBar.scrollPosition = Math.min(Math.max(newX - sliderCanvas.width/2, 0), hScrollBar.maxScrollPosition);
+					updateSliderCanvasScroll(hScrollBar.scrollPosition);
+				}
+				else {
+					var newValue:Number = newX - sliderCanvas.width + componentWidth;
+					var oldValue:Number = sliderCanvas.horizontalScrollPosition;
+					//drag right
+					if ((newValue > oldValue) && (newValue >  sliderCanvas.horizontalScrollPosition)) {
+						hScrollBar.scrollPosition = newValue;
+//						updateSliderCanvasScroll(hScrollBar.scrollPosition);	
+					} 
+					//drag left
+					else if ((newValue < oldValue) && ((newValue - componentWidth) <  (sliderCanvas.horizontalScrollPosition - sliderCanvas.width))) {
+						hScrollBar.scrollPosition = Math.max(newX, 0);
+//						updateSliderCanvasScroll(hScrollBar.scrollPosition);
+					}
+				}
+				
+				scrollClipper(movePlayhead);
+				
+				if (_showThumbs && !_draggingPlayhead) {
+					//trigger binding
+					FrameIR.loadThumb = false;
+					FrameIR.loadThumb = true;					
+				}
+			}
+			
+			
+			/**
+			 * calculate tick interval according to its size and slider width
+			 * */
+			private function calculateTicksForMax():int {
+				var numOfTicks:int = this.width / _slider.getStyle("minLabelLength");
+				return (_slider.maximum / numOfTicks);
+			}
+			
+			/**
+			 * creates a new array of ticks values and set them to the slider
+			 * */
+			private function setTickValues():void {
+				if (!_slider.tickInterval)
+					return;
+				var sliderValuesArr:Array = new Array();
+				for (var i:int = 0; i<_slider.maximum; i=i+_slider.tickInterval)
+				{
+					sliderValuesArr.push(i);
+				} 
+				
+				_slider.tickValues = sliderValuesArr
+			}
+			
+			/**
+			 * translate the given value in milliseconds to format hh:mm:ss:mm
+			 * */
+			private function buildLabel(valueInMS:Number, isTooltip:Boolean = true):String {
+				var date:Date = new Date();
+				date.hours = date.minutes = date.seconds = 0;
+				date.milliseconds = valueInMS;
+				var formatString:String;
+				
+				if (isTooltip) {
+					formatString = LABEL_FORMAT;
+				}
+				else {
+					formatString = _labelFormatString;
+				}
+				dateFormatter.formatString = formatString;
+				return dateFormatter.format(date);
+			}
+			
+			/**
+			 * change later to right location
+			 * */
+			private function setLabels() : void {
+				_slider.setStyle("bigTickLength", 10);
+				_slider.setStyle("smallTickLength", 5);
+				
+				var sliderLabelsArr:Array = new Array();
+			
+				if (_slider.tickValues) {
+					if (_slider.tickValues.length < _slider.tickGroupCount) {
+						for (var j:int = 0; j < _slider.tickValues.length; j++) {
+							sliderLabelsArr.push(buildLabel(_slider.tickValues[j], false))
+						}
+					}
+					else {
+						var numOfLabels:int = Math.ceil(_slider.tickValues.length/_slider.tickGroupCount);
+						for (var i:int = 0; i<numOfLabels; i++) {
+							sliderLabelsArr.push(buildLabel(_slider.tickValues[_slider.tickGroupCount*i], false));
+						}	
+					}		
+				}
+				
+				_slider.labels = sliderLabelsArr;
+			}
+			
+			/**
+			 * remove labels and ticks for the slider
+			 * */
+			private function hideSliderTop():void {
+				_slider.labels = new Array();
+
+				_slider.setStyle("bigTickLength", 0);
+				_slider.setStyle("smallTickLength", 0);
+			}
+			
+			/**
+			 * sets the thumbnail url for all frames
+			 * */
+			private function populateThumbnails() : void
+			{
+				var tempArr : Array = new Array();
+				for(var i:Number=0; i<=_slider.maximum; i=i+MS_PER_FRAME)
+				{
+					var thumbnailUrl:String = 
+						serverUrl + '/p/' + _entry.partnerId + '/thumbnail/entry_id/' + _entry.id + '/vid_sec/' + (i/1000);
+					tempArr.push( thumbnailUrl );
+				}
+				_thumbAc = new ArrayCollection( tempArr );
+				thumbsList.invalidateDisplayList();
+			}
+			
+			/**
+			 * add a new time based asset
+			 * */
+			private function addTimeBasedAsset(event:MouseEvent):void {
+				if (currentState == CUE_POINTS_STATE) {
+					addCuePoint();
+				}
+				else {
+					var entry:KalturaMediaEntry = new KalturaMediaEntry();
+					entry.mediaType = (_entry as KalturaMediaEntry).mediaType;// KalturaMediaType.VIDEO; 
+					var mediaClip:MediaClipVO = new MediaClipVO(entry, new KalturaClipAttributes());
+					mediaClip.id = UIDUtil.createUID();
+					
+					if (currentState == CLIPPING_STATE){	
+						addClipAt(_slider.value, Math.max(DEFAULT_CLIP_SIZE * (_slider.maximum / _slider.getTrackWidth()), MIN_CLIP_LENGTH), mediaClip);
+					}	
+					else { //add clip on entire movie
+						addClipAt(0, _slider.maximum, mediaClip);
+					}
+				} 
+			}
+			
+			/**
+			 * add cue point at the given time
+			 * */
+			public function addCuePointAt(timeInMS:Number, cuePointObj:KalturaCuePoint = null, newCuePoint:Boolean = true):void {
+				var cuePoint:KalturaCuePoint = cuePointObj;
+				if (!cuePoint) {
+					switch (cuePointType) {
+						case KalturaCuePointType.AD:
+							cuePoint = new KalturaAdCuePoint();
+							cuePoint.endTime = timeInMS;
+							break;
+						case KalturaCuePointType.CODE:
+							cuePoint = new KalturaCodeCuePoint();
+							break;
+						case KalturaCuePointType.ANNOTATION:
+							cuePoint = new KalturaAnnotation();
+							cuePoint.endTime = timeInMS;
+							break;
+					}
+					//temporary unique identifier, until cue point will be saved on the server
+					cuePoint.id = UIDUtil.createUID();
+					cuePoint.cuePointType = cuePointType;
+					cuePoint.entryId = entryId;
+					cuePoint.startTime = timeInMS;
+				}
+				if (newCuePoint) 
+					_addedItemsAC.addItem(cuePoint);
+					
+				addCuePointToCanvas(timeInMS * (_slider.getTrackWidth() / _slider.maximum) + _activeLayer.offset, timeInMS, cuePoint, newCuePoint);
+
+			}
+			
+			/**
+			 * add cue point at the current location of the playhead
+			 * */
+			public function addCuePoint(cuePoint:KalturaCuePoint = null):void {
+				addCuePointAt(_slider.value, cuePoint);
+			}
+			
+			private function addCuePointToCanvas(xPos:Number, timeInMS:Number, cuePointObj:KalturaCuePoint, newCuePoint:Boolean = true):void {
+				var cuePoint:CuePointBtn = cuePointsLayer.createCuePoint(xPos, timeInMS, cuePointObj);
+				if (cuePoint) {
+					var wasAdded:Boolean = cuePointsLayer.addToCanvas(cuePoint, true, newCuePoint);
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CUE_POINT_ADDED, cuePointObj, true));
+					if (newCuePoint){
+						if (wasAdded){
+							_activeLayer.setSelectedTimeBasedAsset(cuePoint);
+						} 
+					}
+				}
+			}
+			
+			/**
+			 * add clip at the given start time and given length
+			 * */
+			public function addClipAt(startTime:Number, length:Number, mediaClip:MediaClipVO):void {
+				if (isNaN(length) || (length < MIN_CLIP_LENGTH)) {
+					dispatchEvent(new ClipperMessageEvent
+						(ClipperMessageEvent.DISPLAY_MESSAGE, resourceManager.getString('clipper','minClipLengthError'), KClipErrorCodes.CLIP_TOO_SHORT,true));
+				}
+				else {
+					mediaClip.clipAttributes.offset = startTime;
+					mediaClip.clipAttributes.duration = length
+					addClipToCanvas(startTime, length, mediaClip);
+				}
+			}
+			
+			/**
+			 * add clip at the current playhead location
+			 * */
+			public function addClip(length:Number, mediaClip:MediaClipVO):void {
+				addClipAt(_slider.value, length, mediaClip);
+			}
+			
+			private function addClipToCanvas(timeInMS:Number, lengthInMS:Number, mediaClip:MediaClipVO, setSelected:Boolean = true):void {
+				if ((currentState == TRIMMING_STATE) &&(_addedItemsAC.length > 0)) {
+					dispatchEvent(new ClipperMessageEvent(ClipperMessageEvent.DISPLAY_MESSAGE, resourceManager.getString('clipper','cannotAddClipMsg'), KClipErrorCodes.CLIP_ADD_FAILED ,true));
+				}
+				else {
+					var ratio:Number = _slider.getTrackWidth() / _slider.maximum;
+					var clip:ClipItem = clipsLayer.createClipItem(timeInMS, lengthInMS, ratio, mediaClip);
+					if (clip) {
+						clipsLayer.addToCanvas(clip, true);
+						_addedItemsAC.addItem(mediaClip);
+						dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CLIP_ADDED, mediaClip, true));
+						if (setSelected)
+							_activeLayer.setSelectedTimeBasedAsset(clip);
+					}
+				}
+			} 
+			
+			/**
+			 * updates the playhead to the given value, scroll the clipper to this new value
+			 * if playhead is curretnly being dragged, this action will be ignored
+			 * */
+			public function setPlayheadValue(timeInMS:Number):void {
+				if (_slider && !_draggingPlayhead) {
+					_slider.removeEventListener(SliderEvent.CHANGE, onSliderChange, false);
+					_slider.getThumbAt(0).x = timeInMS * (_slider.getTrackWidth() / _slider.maximum) + _activeLayer.offset;
+					_slider.addEventListener(SliderEvent.CHANGE, onSliderChange, false, 0, true);
+					_slider.value = timeInMS;
+					onSliderChange(null);
+					
+					scrollToNewLocation(_slider.getThumbAt(0).x, _slider.getThumbAt(0).width, true, false);
+				}
+			}
+			
+			/**
+			 * remove the selected cue point fron the cuePoints layer
+			 * */
+			public function deleteTimeBasedAsset():void {
+				var removed:ITimeBasedAsset = _activeLayer.removeSelected();
+				if (removed && removed.assetVo) {
+					addToDeleted(removed.assetVo);
+					dispatchEvent(new ClipperExternalEvent(KClipEventTypes.SELECTED_ASSET_REMOVED, removed.assetVo, true));		
+				}	
+			}
+			
+			public function setSelectedById(selectedId:String):void {
+				var selectedAsset:ITimeBasedAsset = _activeLayer.setSelectedByAssetId(selectedId);
+				if (selectedAsset) {
+					updatePlayhead(selectedAsset.timeInMS);
+				}
+			}
+			
+			public function getSelectedAsset():Object {
+				return _activeLayer.getSelectedAssetVo();
+			}
+			
+			/**
+			 * add asset to delete to "deleted" array, remove it from "added" or "updated" array
+			 * */
+			private function addToDeleted(assetVo:Object):void {
+				var index:int = _addedItemsAC.getItemIndex(assetVo)
+				if (index!= -1)
+					_addedItemsAC.removeItemAt(index);
+				else {
+					index = _updatedItemsAC.getItemIndex(assetVo);
+					if (index!=-1)
+						_updatedItemsAC.removeItemAt(index);
+					_deletedItemsAC.addItem(assetVo);
+				}
+				
+			}
+			
+			/**
+			 * remove all assets from the active layer
+			 * */
+			public function removeAll():void {
+				_deletedItemsAC = new ArrayCollection();
+				for each (var asset:ITimeBasedAsset in _activeLayer.tbAssetsArr) {
+					if (asset.assetVo) {
+						var assetFound:Boolean = false;
+						for (var i:int = 0; i<_addedItemsAC.length; i++) {
+							if (_addedItemsAC[i]["id"] == asset.assetVo["id"]) {
+								assetFound = true;
+								break;
+							}
+						}
+						//the asset is saved on the server, should be deleted
+						if (!assetFound) {
+							_deletedItemsAC.addItem(asset.assetVo);
+						}
+					}
+				}
+				_addedItemsAC = new ArrayCollection();
+				_updatedItemsAC = new ArrayCollection();
+				var removedAssets:Array = getAll();
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.ALL_ASSETS_REMOVED,  removedAssets, true));
+				_activeLayer.removeAll();
+			}
+			
+			/**
+			 * set state according to given value
+			 * */
+			public function setState(stateName:String):void {
+				this.setCurrentState(stateName);
+				if (stateName == CUE_POINTS_STATE) {
+					_activeLayer = cuePointsLayer as TimeBaseAssetsLayer;
+					if (_entryId){
+						dispatchEvent(new CuePointEvent(CuePointEvent.LIST_CUE_POINTS, entryId, cuePointType,true));
+					}
+				}
+				else
+				{
+					_activeLayer = clipsLayer as TimeBaseAssetsLayer; 
+				}
+			}
+			
+			/**
+			 * Return all assets for active layer
+			 * */
+			public function getAll():Array {
+				var assetsArr:Array = new Array();
+				for each (var tbAsset:ITimeBasedAsset in _activeLayer.tbAssetsArr) {
+					assetsArr.push(tbAsset.assetVo);
+				}
+				return assetsArr;
+			}
+			
+			/**
+			 * update given in time on the selected time based asset
+			 * */
+			public function updateStartTime(timeInMS:Number):void {
+				_activeLayer.updateSelectedStartX(timeInMS, (_slider.getTrackWidth() / _slider.maximum));
+			}
+			
+			/**
+			 * update given length on the selected clip
+			 * */
+			public function updateSelectedAssetValues(startInMS:Number, lengthInMS:Number):void {
+				if (_activeLayer is ClipsLayer) {
+					(_activeLayer as ClipsLayer).updateSelectedAssetValues(startInMS, lengthInMS, (_slider.getTrackWidth() / _slider.maximum));
+				}
+			}
+			
+			public function getPlayheadLocation():Number {
+				if (_slider)
+					return _slider.value;
+				
+				return 0;
+			}
+			
+			/**
+			 * will be called when finish scrolling in frames zoom
+			 * */
+			private function onMouseUp(event:MouseEvent):void {
+				if (_scrollingFrames){
+					_scrollingFrames = false;
+					for (var i:int = 0; i< thumbsList.numChildren; i++) {
+						FrameIR.loadThumb = true;
+					}
+				}
+				stage.removeEventListener(MouseEvent.MOUSE_UP,  onMouseUp);
+			}
+		
+			/**
+			 * clears the message text
+			 * */
+			private function resetMessage():void {
+				dispatchEvent(new ClipperMessageEvent(ClipperMessageEvent.DISPLAY_MESSAGE, "", "",true));
+			}
+			
+			/**
+			 * add clip on entire movie
+			 * */
+			public function addClipForTrimming (mediaClip:MediaClipVO):void {
+				addClipToCanvas(0, _slider.maximum, mediaClip);
+			}
+			
+			public function updateAssetVo(object:Object):void {
+				_activeLayer.updateAssetVo(object, (_slider.getTrackWidth() / _slider.maximum))
+			}
+			
+			private function onSelectedChanged(event:TimeBaseAssetEvent):void {
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.SELECTED_ASSET_CHANGED, event.timeBasedAsset.assetVo, true));
+			}
+			
+			public function setDisabled(value:Boolean):void {
+				_externalDisable = value;
+			}
+			
+			public function save():void {
+				var type:String;
+				if (currentState == CUE_POINTS_STATE)
+					type = SaveEvent.SAVE_CUE_POINTS;
+				else if (currentState == CLIPPING_STATE)
+					type = SaveEvent.SAVE_CLIPS;
+				else
+					type = SaveEvent.SAVE_TRIM;
+				
+				dispatchEvent(new SaveEvent(type, entryId, _addedItemsAC, _updatedItemsAC, _deletedItemsAC, true));
+			}
+			
+			public function setError(value:Boolean, assetId:String):void {
+				for each (var tbAsset:ITimeBasedAsset in _activeLayer.tbAssetsArr) {
+					if (tbAsset.assetVo["id"] == assetId) {
+						tbAsset.setErrorState(value);
+						break;
+					}
+				}
+			}
+		
+			/**
+			 * Will replace the "allowTrackClick" on slider. Will move the playhead to the clicked position on the layer.
+			 * */
+			private function onLayerClick(event:MouseEvent):void
+			{
+				if (event.target is TimeBaseAssetsLayer) {
+					var newX:Number = event.localX - _activeLayer.offset;
+					updatePlayhead((newX + sliderCanvas.horizontalScrollPosition) * (_slider.maximum / _slider.getTrackWidth()));
+				}
+			}
+			
+			private function updateSliderCanvasScroll(value:Number):void {
+				sliderCanvas.horizontalScrollPosition = value;
+				if (sliderCanvas.maxHorizontalScrollPosition!=0)
+					_slider.scrollPos = value;
+				else 
+					_slider.scrollPos = 0;
+			}
+			
+			public function setZoomSelectedIndex(index:int):void {
+				if ((index < 0) || (index >= zoomValues.length)) {
+					dispatchEvent(new ClipperMessageEvent
+						(ClipperMessageEvent.DISPLAY_MESSAGE, resourceManager.getString('clipper','indexOutOfBounds'), KClipErrorCodes.INVALID_INPUT,true));
+				}
+				else {
+					zoomBox.selectedIndex = index;
+					onZoomBoxChange();
+				}
+			}
+
+			private function onPreInitialize(event:FlexEvent):void
+			{
+				if (behaviour == null){
+					behaviour = new defaultBehaviourClass();
+				}
+			}
+			
+			public function set showThumbs(value:Boolean):void{
+				if ((zoomBox.selectedItem as ZoomBoxValue).valueInMS == ZoomBoxValueType.MIN_VALUE){
+					_showThumbs = value;
+				} else {
+					_showThumbs = false;
+				}
+				_supposedShowThumbs = value;
+			}
+			
+			public function get showThumbs():Boolean{
+				return _showThumbs;
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:states>
+		<mx:State name="{CUE_POINTS_STATE}">
+			<mx:RemoveChild target="{clipsLayer}"/>
+		</mx:State>
+		<mx:State name="{CLIPPING_STATE}">
+			<mx:RemoveChild target="{cuePointsLayer}"/>
+		</mx:State>
+		<mx:State name="{TRIMMING_STATE}">
+			<mx:RemoveChild target="{cuePointsLayer}"/>
+			<mx:SetProperty target="{this}" name="maxAllowedRows" value="1"/>
+		</mx:State>
+	</mx:states>
+	
+	<mx:DateFormatter id="dateFormatter"/>
+	<!-- for background -->
+	<mx:VBox styleName="layerVbox" height="{thumbsList.height}" width="{thumbsList.width}" y="{thumbsList.y}"/>
+	
+	<mx:HorizontalList id="thumbsList" height="{sliderCanvas.height - LIST_OFFSET}" width="{this.width}" y="{sliderCanvas.y + LIST_OFFSET}"
+					   dataProvider="{_thumbAc}" horizontalScrollPolicy="off" visible="{_showThumbs}" includeInLayout="{_showThumbs}"
+					   verticalAlign="middle" enabled="{!(_isChanging || isLoading || _externalDisable)}" itemRenderer="view.itemRenderers.FrameIR"/>	
+		
+	<layers:CuePointsLayer id="cuePointsLayer" width="{thumbsList.width}" height="{thumbsList.height}" y="{thumbsList.y}" 
+						   numOfRows="{maxAllowedRows}" rowsWidth="{_slider.width}" enabled="{!(_isChanging || isLoading || _externalDisable)}"
+						   assetStartChanged="{onTimeBasedAssetLocChanged(event)}" assetDrag="{onTimeBasedAssetDrag(event)}"
+						   assetSelected="{onSelectedChanged(event)}" click="onLayerClick(event)" />
+	
+	<layers:ClipsLayer id="clipsLayer" width="{thumbsList.width}" height="{thumbsList.height}" y="{thumbsList.y}" 
+					   numOfRows="{maxAllowedRows}" rowsWidth="{_slider.width}" enabled="{!(_isChanging || isLoading || _externalDisable)}"
+					   assetStartChanged="{onTimeBasedAssetLocChanged(event)}" assetEndChanged="{onClipEndChanged(event)}"
+					   assetSelected="{onSelectedChanged(event)}" click="onLayerClick(event)"/>
+	
+	<mx:Canvas id="sliderCanvas" height="{this.height - controlBox.height - messageBox.height}" width="{this.width}"
+			   horizontalScrollPolicy="off" enabled="{!(_isChanging || isLoading || _externalDisable)}" />
+	<mx:Image source="{progressImage}" visible="{(_isChanging || isLoading)}" verticalCenter="0" horizontalCenter="0" height="50" width="50" x="{this.width / 2}"/>
+	
+	<mx:HBox id="controlBox" width="{this.width}" height="{showControlBar ? 21 : 0}" y="{sliderCanvas.y + sliderCanvas.height}" styleName="controlsHBox"
+			 visible="{showControlBar}" includeInLayout="{showControlBar}">
+		<mx:ComboBox id="zoomBox" dataProvider="{zoomValues}" change="onZoomBoxChange()"
+					selectedIndex="0" styleName="zoomComboBox" enabled="{!(_isChanging || isLoading || _externalDisable || ! _isReady)}"
+					height="17"/>
+		
+		<mx:HBox styleName="addRemoveBtns" visible="{showAddDeleteBtns}" includeInLayout="{showAddDeleteBtns}">
+<!--			<mx:Button id="add" width="22" height="21" toolTip="{resourceManager.getString('clipper','add')}" click="{addTimeBasedAsset(event)}" styleName="addButton" enabled="{!(_isChanging || isLoading || _externalDisable || ! _isReady)}"/>
+			<mx:Button id="del" width="22" height="21" toolTip="{resourceManager.getString('clipper','delete')}" click="{deleteTimeBasedAsset()}" styleName="deleteButton" enabled="{!(_isChanging || isLoading || _externalDisable|| ! _isReady)}"/>-->
+			<mx:Button id="add" width="22" height="21" toolTip="{behaviour.addButtonToolTip}" click="{addTimeBasedAsset(event)}" styleName="addButton" enabled="{!(_isChanging || isLoading || _externalDisable || ! _isReady)}"/>
+			<mx:Button id="del" width="22" height="21" toolTip="{behaviour.removeButtonToolTip}" click="{deleteTimeBasedAsset()}" styleName="deleteButton" enabled="{!(_isChanging || isLoading || _externalDisable|| ! _isReady)}"/>
+		</mx:HBox>
+		
+		<utils:KScrollBar id="hScrollBar" width="100%"  scroll="{onScrollbarScroll(event)}" enabled="{!(_isChanging || isLoading || _externalDisable)}"/>
+	</mx:HBox>
+	<mx:HBox id="messageBox" visible="{showMessageBox}" includeInLayout="{showMessageBox}" width="{this.width}" height="{showMessageBox ? 30 : 0}" y="{sliderCanvas.y + sliderCanvas.height + controlBox.height}" styleName="messageHBox">
+		<mx:Label text="{_messageText}" styleName="messageLabel"/>
+	</mx:HBox>
+	
+</mx:Canvas>

@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!---
+	Cue points layer
+-->
+<layers:TimeBaseAssetsLayer xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:layers="view.layers.*" creationComplete="onCreationComplete(event)">
+	<mx:Metadata>
+		/**
+		*  The width of a cue point
+		*/
+		[Style(name="cuePointWidth", type="Number", format="Length", inherit="no")]
+		/**
+		*  The height of a cue point
+		*/
+		[Style(name="cuePointHeight", type="Number", format="Length", inherit="no")]
+		
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.events.KClipErrorCodes;
+			import com.kaltura.events.KClipEventTypes;
+			import com.kaltura.vo.KalturaCuePoint;
+			
+			import events.ClipperExternalEvent;
+			import events.ClipperMessageEvent;
+			import events.TimeBaseAssetEvent;
+			
+			import flash.utils.getTimer;
+			
+			import mx.containers.Canvas;
+			import mx.controls.Button;
+			import mx.events.FlexEvent;
+			import mx.formatters.DateFormatter;
+			import mx.formatters.NumberFormatter;
+			
+			import view.TimeBasedAssets.CuePointBtn;
+			import view.TimeBasedAssets.ITimeBasedAsset;
+
+			private var _startDragPoint:int;
+			private var _buttonWidth:Number;				
+			private var _buttonHeight:Number;				
+			//difference between start drag x and selected point x
+			private var _mouseXDiff:Number;
+			private var _hasMoved:Boolean;
+			public var maximumTime:Number;
+			
+			override public function addToCanvas(asset:ITimeBasedAsset, addAsNew:Boolean, notSaved:Boolean = true):Boolean {
+				if (super.addToCanvas(asset, addAsNew)) {
+					if (addAsNew)
+						dispatchMessageEvent("");
+					return true;
+				}
+				else {
+					if (notSaved){
+						dispatchMessageEvent(resourceManager.getString('clipper', 'cannotAddCuePointMsg' ), KClipErrorCodes.CUEPOINT_ADD_FAILED);
+					}
+					else{ //cue points is already saved, cannot locate
+						dispatchMessageEvent(resourceManager.getString('clipper', 'cannotLocateCuePoints'), KClipErrorCodes.CUEPOINT_LOCATION_FAILED);
+					}
+					return false;
+				}
+			}
+			
+			/**
+			 * return a new cuePoint according to given values
+			 * */
+			public function createCuePoint(position:Number, timeInMS:Number, assetVO:KalturaCuePoint):CuePointBtn {
+//				var maxLength:Number = getChildAt(0).width;
+				if (isNaN(position) || (timeInMS > maximumTime)) {
+					var time:Date = new Date();
+					time.hours = time.minutes = time.seconds = 0;
+					time.milliseconds = timeInMS;
+					var formatter:DateFormatter = new DateFormatter();
+					formatter.formatString = "JJ:NN:SS:QQQ";
+					dispatchMessageEvent(resourceManager.getString('clipper','invalidCuePointsMsg', [formatter.format(time)]), KClipErrorCodes.CUEPOINT_ADD_FAILED);
+					return null;
+				}
+				var cuePointBtn:CuePointBtn = new CuePointBtn();
+				cuePointBtn.assetVo = assetVO;
+				cuePointBtn.timeInMS = timeInMS;
+				cuePointBtn.assetWidth = _buttonWidth;
+				cuePointBtn.startX = position;
+				cuePointBtn.height = _buttonHeight;
+				cuePointBtn.addEventListener(MouseEvent.CLICK, onCuePointClick);
+				cuePointBtn.addEventListener(MouseEvent.MOUSE_DOWN, onCuePointDragStart);
+				
+				return cuePointBtn;
+			}
+			
+		
+			
+			/**
+			 * will try to set the given position to the given cuePoint. If parent canvas
+			 * already contains a cuePoint in the given position, will remove it and try to add it to another canvas
+			 * */
+			override protected function locateTimeBasedAsset(asset:ITimeBasedAsset) : Boolean {
+				if (super.locateTimeBasedAsset(asset)) {
+					dispatchMessageEvent("");
+					return true;
+				}
+				else {
+					dispatchMessageEvent(resourceManager.getString('clipper', 'cannotAddCuePointMsg'), KClipErrorCodes.CUEPOINT_ADD_FAILED);
+					return false;
+				}
+			}
+		
+			/**
+			 * drag point
+			 * */
+			private function onCuePointDragStart(event:MouseEvent):void {
+				onCuePointClick(event);
+				_startDragPoint = selectedAsset.startX;
+				_mouseXDiff = mouseX - selectedAsset.startX - selectedAsset.assetWidth/2;
+				var curButton:CuePointBtn = event.target as CuePointBtn;
+				if (!(selectedAsset as CuePointBtn).visible)
+					return;
+
+				if ((selectedAsset as CuePointBtn).backgroundPoint)
+					(selectedAsset as CuePointBtn).backgroundPoint.visible = true;
+				
+				stage.addEventListener(MouseEvent.MOUSE_UP, onCuePointDragDrop);
+				stage.addEventListener(MouseEvent.MOUSE_MOVE, dispatchCuePointMove);
+			}
+			
+			
+			/**
+			 * release drag point
+			 * */
+			private function onCuePointDragDrop(event:MouseEvent = null):void {
+				stage.removeEventListener(MouseEvent.MOUSE_UP, onCuePointDragDrop);
+				stage.removeEventListener(MouseEvent.MOUSE_MOVE, dispatchCuePointMove);
+	
+				if ((selectedAsset as CuePointBtn).backgroundPoint)
+					(selectedAsset as CuePointBtn).backgroundPoint.visible = false;
+				
+				if (!this.locateTimeBasedAsset(selectedAsset as CuePointBtn)) {
+					selectedAsset.startX = _startDragPoint;
+				}
+				else
+				{
+					var cuePointEvt:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset, _hasMoved);
+					dispatchEvent(cuePointEvt);
+				}
+				
+				if ((selectedAsset as CuePointBtn).backgroundPoint) {
+					if (!isPositionOverlapPoint((selectedAsset as CuePointBtn).backgroundPoint.startX, (selectedAsset as CuePointBtn).backgroundPoint.assetWidth, selectedAsset.startX, selectedAsset.assetWidth)) {
+						(selectedAsset as CuePointBtn).backgroundPoint.visible = true;
+						(selectedAsset as CuePointBtn).backgroundPoint = null;
+					}
+				}
+				_hasMoved = false;
+			}
+	
+			/**
+			 * dispatch cue point drag event
+			 * */
+			private function dispatchCuePointMove(event:MouseEvent):void {
+				_hasMoved = true;
+				selectedAsset.startX = Math.max(Math.min(mouseX - _mouseXDiff, (rowsWidth - offset)), offset);
+				var moveEvent:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_DRAG, selectedAsset);
+				dispatchEvent(moveEvent);
+			}
+			
+			/**
+			 * dispatch the click event and select the clicked cue point 
+			 * */
+			private function onCuePointClick(event:MouseEvent) : void {
+				if (!selectedAsset || (event.target != selectedAsset))
+					setSelectedTimeBasedAsset(event.target as ITimeBasedAsset);	
+				//dispatchEvent(new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_CLICK));
+			}
+			
+			/**
+			 * will relocate cue points according to given ratio
+			 * will update points width according to given widthRatio
+			 * */
+			override public function relocateTimeBasedAssets(ratio:Number, widthRatio:Number):void {
+				var oldXArray:Array = new Array();
+				for (var i:int = 0; i<tbAssetsArr.length; i++) {
+					var cuePoint:CuePointBtn = tbAssetsArr[i] as CuePointBtn; 
+					oldXArray.push(cuePoint.startX);
+					cuePoint.startX = (cuePoint.timeInMS * ratio) + offset;
+					cuePoint.visible = true;
+					for (var j:int = i-1; j>=0; j--) {
+						var locatedCuePoint:CuePointBtn = tbAssetsArr[j] as CuePointBtn;
+						if (locatedCuePoint.parent == cuePoint.parent) {
+							//if in new resolution two points overlap will put one in the background
+							if (locatedCuePoint.visible && !isPositionOverlapPoint(oldXArray[i], _buttonWidth, oldXArray[j], _buttonWidth) && isPositionOverlapPoint(cuePoint.x, _buttonWidth, locatedCuePoint.x, _buttonWidth)) {
+								cuePoint.visible = false;
+								locatedCuePoint.backgroundPoint = cuePoint;
+								break;
+							}
+						}
+					}
+				} 
+
+				dispatchMessageEvent("");
+			}
+
+
+			override protected function onCreationComplete(event:FlexEvent):void
+			{
+				super.onCreationComplete(event);
+				_buttonWidth = getStyle("cuePointWidth");
+				_buttonHeight = getStyle("cuePointHeight");
+			}
+			
+			/**
+			 * delete the selected cue point
+			 * */
+			override public function removeSelected():ITimeBasedAsset{
+				if (!selectedAsset) {
+					dispatchMessageEvent(resourceManager.getString('clipper','deleteCuePointMsg'), KClipErrorCodes.SELECT_CUEPOINT);
+					return null;
+				}
+				
+				dispatchMessageEvent("");
+				return super.removeSelected();
+			}
+			
+			/**
+			 * update start X and time in ms
+			 * */
+			override public function updateSelectedStartX(timeInMS:Number, ratio:Number):void {
+				if (!selectedAsset) {
+					dispatchMessageEvent(resourceManager.getString('clipper','selectUpdateCuePointMsg'), KClipErrorCodes.SELECT_CUEPOINT);
+				}	
+				else {
+					var oldStart:Number = selectedAsset.startX;
+					selectedAsset.startX = timeInMS * ratio + offset;
+					if (this.locateTimeBasedAsset(selectedAsset)) {
+						selectedAsset.timeInMS = timeInMS;
+						var cuePointEvt:TimeBaseAssetEvent = new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset, false);
+						dispatchEvent(cuePointEvt);
+						dispatchMessageEvent("");
+					}
+					else {
+						selectedAsset.startX = oldStart;
+					}
+				}
+			}
+			
+			override public function updateAssetVo(assetVO:Object, ratio:Number):Boolean {
+				if (super.updateAssetVo(assetVO, ratio)) {	
+					return true;
+				}
+				else
+				{
+					dispatchMessageEvent(resourceManager.getString('clipper','updateCuePointMsg'), KClipErrorCodes.SELECT_CUEPOINT);
+					return false;
+				}
+			}
+			
+		]]>
+	</mx:Script>
+</layers:TimeBaseAssetsLayer>

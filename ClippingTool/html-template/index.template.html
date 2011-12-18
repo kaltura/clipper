@@ -1,0 +1,323 @@
+<!-- saved from url=(0014)about:internet -->
+<html lang="en">
+
+<!-- 
+Smart developers always View Source. 
+
+This application was built using Adobe Flex, an open source framework
+for building rich Internet applications that get delivered via the
+Flash Player or to desktops via Adobe AIR. 
+
+Learn more about Flex at http://flex.org 
+// -->
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+<!--  BEGIN Browser History required section -->
+<link rel="stylesheet" type="text/css" href="history/history.css" />
+<!--  END Browser History required section -->
+
+<title>${title}</title>
+<script src="AC_OETags.js" language="javascript"></script>
+
+<!--  BEGIN Browser History required section -->
+<script src="history/history.js" language="javascript"></script>
+<!--  END Browser History required section -->
+<script language="JavaScript" type="text/javascript">
+
+// -----------------------------------------------------------------------------
+// Globals
+// Major version of Flash required
+var requiredMajorVersion = ${version_major};
+// Minor version of Flash required
+var requiredMinorVersion = ${version_minor};
+// Minor version of Flash required
+var requiredRevision = ${version_revision};
+// -----------------------------------------------------------------------------
+</script>
+</head>
+
+<body>
+<script language="JavaScript" type="text/javascript">
+<!--
+// Version check for the Flash Player that has the ability to start Player Product Install (6.0r65)
+var hasProductInstall = DetectFlashVer(6, 0, 65);
+
+// Version check based upon the values defined in globals
+var hasRequestedVersion = DetectFlashVer(requiredMajorVersion, requiredMinorVersion, requiredRevision);
+
+if ( hasProductInstall && !hasRequestedVersion ) {
+	// DO NOT MODIFY THE FOLLOWING FOUR LINES
+	// Location visited after installation is complete if installation is required
+	var MMPlayerType = (isIE == true) ? "ActiveX" : "PlugIn";
+	var MMredirectURL = window.location;
+    document.title = document.title.slice(0, 47) + " - Flash Player Installation";
+    var MMdoctitle = document.title;
+
+	AC_FL_RunContent(
+		"src", "playerProductInstall",
+		"FlashVars", "MMredirectURL="+MMredirectURL+'&MMplayerType='+MMPlayerType+'&MMdoctitle='+MMdoctitle+"",
+		"width", "${width}",
+		"height", "${height}",
+		"align", "middle",
+		"id", "${application}",
+		"quality", "high",
+		"bgcolor", "${bgcolor}",
+		"name", "${application}",
+		"allowScriptAccess","sameDomain",
+		"type", "application/x-shockwave-flash",
+		"pluginspage", "http://www.adobe.com/go/getflashplayer"
+	)
+} else if (hasRequestedVersion) {
+	// if we've detected an acceptable version
+	// embed the Flash Content SWF when all tests are passed
+	AC_FL_RunContent(
+			"src", "${swf}",
+			"width", "755",
+			"height", "150",
+
+			"align", "middle",
+			"id", "${application}",
+			"quality", "high",
+			"bgcolor", "${bgcolor}",
+			"name", "${application}",
+			"allowScriptAccess","sameDomain",
+			"type", "application/x-shockwave-flash",
+			"flashvars",
+						"entry_id=0_k2mn7dhu" +
+						"&host=http://devtests.kaltura.co.cc" +
+						//"&state=clippingState" +
+						"&max_allowed_rows=2" +						
+						"&partner_id=495912" +
+						"&uiconf_id=3550443" +
+						"&show_control_bar=true" +
+						"&js_ready_func=ready" +
+						"&show_add_delete_buttons=true" +
+						"&show_message_box=true"+
+						"&ks=NmMxMjQ0ZGY1M2U1OWU1YmIzYjliYTYzYjcxY2Q5N2RiODU3MjI1OXw0OTU5MTI7NDk1OTEyOzEzMjAxNTAwNzU7MjsxMzIwMDYzNjc1LjA1MjI7bmFvci5iaXRvbkBrYWx0dXJhLmNvbTs7Ow==",
+
+
+			"pluginspage", "http://www.adobe.com/go/getflashplayer"
+	)
+  } else {  // flash is too old or we can't detect the plugin
+    var alternateContent = 'Alternate HTML content should be placed here. '
+  	+ 'This content requires the Adobe Flash Player. '
+   	+ '<a href=http://www.adobe.com/go/getflash/>Get Flash</a>';
+    document.write(alternateContent);  // insert non-flash content
+  }
+// -->
+	
+function setEntryId() {
+	entryId = document.getElementById("entryText").value;
+	document.getElementById("${application}").setEntryId(entryId);
+	alert("entry Id was set");
+};
+	
+function jsRegister() {
+	document.getElementById("${application}").addJsListener("playheadDragStart", "playheadDragStart");
+	document.getElementById("${application}").addJsListener("playheadDragDrop", "playheadDrop");
+	document.getElementById("${application}").addJsListener("clipStartChanged", "startChanged");
+	document.getElementById("${application}").addJsListener("clipEndChanged", "endChanged");
+	document.getElementById("${application}").addJsListener("timeBasedAssetUpdated", "cuePointChanged");
+	document.getElementById("${application}").addJsListener("cuePointAdded", "cuePointAdded");
+	document.getElementById("${application}").addJsListener("clipAdded", "added");
+	document.getElementById("${application}").addJsListener("cuePointAdded", "added");
+	document.getElementById("${application}").addJsListener("allAssetsRemoved", "removed");
+	document.getElementById("${application}").addJsListener("selectedAssetChanged", "onSelection");
+}
+	
+function playheadDragStart() {
+	console.log("playhead drag start");
+}
+function playheadDrop() {
+	console.log("playhead drop");
+}
+
+function addClip() {
+	clipLength = document.getElementById("clipLengthText").value;
+	document.getElementById("${application}").addClip(clipLength);
+}
+function addClipAt() {
+	clipLength = document.getElementById("clipLengthText").value;
+	clipStart = document.getElementById("clipStartText").value;
+	document.getElementById("${application}").addClipAt(clipStart,clipLength);
+}
+function scroll() {
+	scrollTime = document.getElementById("scrollText").value;
+	document.getElementById("${application}").scrollToPoint(scrollTime);
+}
+function updateInTime() {
+	inTime = document.getElementById("inTimeText").value;
+	document.getElementById("${application}").updateInTime(inTime);
+}
+function updateLength() {
+	length = document.getElementById("lengthText").value;
+	document.getElementById("${application}").updateClipLength(length);
+}
+function addCuePointAt() {
+	start = document.getElementById("cuePointStartText").value;
+	document.getElementById("${application}").addCuePointAt(start);
+}
+function addCuePoint() {
+	document.getElementById("${application}").addCuePoint({});
+}
+function updateCuePoint() {
+	document.getElementById("${application}").updateCuePoint({cuePointType:"adCuePoint.Ad", startTime:3504});
+}
+function addTrimClip() {
+	document.getElementById("${application}").addClipForTrim();
+}
+function save() {
+	document.getElementById("${application}").save();
+}
+function reset() {
+	document.getElementById("${application}").removeAll();
+}
+function setSelected() {
+	document.getElementById("${application}").setSelected("9");
+}
+	
+function setError() {
+	document.getElementById("${application}").setError("true",document.getElementById("errorId").value);
+}
+	
+function playheadMoved(data) {
+	console.log(data);
+}
+function startChanged(data) {
+	console.log("clip start changed: "+data);
+}
+function endChanged(data) {
+	console.log("clip end changed: "+data);
+}
+function ready(id) {
+	alert("idasdgfsdfgbv: " + id);
+	console.log("Clipper is Ready");
+	//document.getElementById("${application}").setKS("ZGVlMGUzMWJmMDhjMTcxZTE2NWI2N2JhMTgzNDg2NGQwNmEwYTM5Znw0OTU5MTI7NDk1OTEyOzEzMTU1Nzc1OTc7MjsxMzE1NDkxMTk3LjkxNzQ7bmFvci5iaXRvbkBrYWx0dXJhLmNvbTs7Ow==");
+	//document.getElementById("${application}").setEntryId("0_edjxg29g");
+}
+function kClipReady(id) {
+	alert("id: " + id);
+	console.log("Clipper is Ready");
+}
+function cuePointChanged(data) {
+	console.log("bla");
+	console.log("cue point changed: " + data.startTime);
+}
+function added() {
+	console.log("added:" + data);
+}
+function removed() {
+	console.log("all assets were removed");
+}
+function cuePointAdded(data) {
+	console.log("cue point added " +data.id);
+}
+function disable() {
+	document.getElementById("${application}").setDisabled("true");
+}
+function setWidth() {
+	document.getElementById("${application}").style.width=1000;
+	//document.getElementById("${application}").setWidth(800);
+}
+function enable() {
+	document.getElementById("${application}").setDisabled("false");
+}
+function loadCuePoints() {
+	document.getElementById("${application}").loadCuePoints();
+}
+function save() {
+	document.getElementById("${application}").save();
+}
+function changeZoom() {
+	document.getElementById("${application}").updateZoomIndex(0);
+}
+function updateStartClip() {
+	var currentClip = document.getElementById("${application}").getSelected();
+	var val = document.getElementById("${application}").getPlayheadLocation();
+	 var duration = currentClip.clipAttributes.duration - (val - currentClip.clipAttributes.offset);
+	if (duration >= 100) {
+		document.getElementById("${application}").updateClipAttributes({offset:val, duration:duration} );
+	 //	document.getElementById("${application}").updateClipLength( duration );
+	//	 document.getElementById("${application}").updateInTime( val );
+	}
+	
+
+}
+function updateEndClip() {
+	var currentClip = document.getElementById("${application}").getSelected();
+	var length = ( document.getElementById("${application}").getPlayheadLocation() - currentClip.clipAttributes.offset);
+	if (length >= 100) {
+		document.getElementById("${application}").updateClipAttributes({offset:currentClip.clipAttributes.offset, duration:length} );
+		//document.getElementById("${application}").updateClipLength(length);
+	}
+}
+function getSelected() {
+	console.log(document.getElementById("${application}").getSelected());
+}
+function isReady() {
+	alert(document.getElementById("${application}").isReady());
+}
+function isSaveRequired() {
+	alert(document.getElementById("${application}").isSaveRequired());
+}
+
+function onSelection(cuepoint){
+	var marker = document.getElementById("selection");
+	console.log(cuepoint);
+	if (! cuepoint){
+		marker.value = "null";
+	} else {
+		marker.value = cuepoint["id"];
+	}
+	
+}
+	
+</script>
+<br/><br/>
+	<label>Selection tracker</label><br />
+	<input type="text" id="selection" value="" /><br /><br />
+	<input type="button" value="Is Ready?" onclick="isReady();" /> <br/><br/>
+	<input type="button" value="Is Save Required?" onclick="isSaveRequired();" /> <br/><br/>
+	<input type="text" value="1_blq960ri" id="entryText" />
+	<input type="button" value="Set Entry ID" onclick="setEntryId();" /> <br/><br/>
+	<input type="button" value="REGISTER js" onclick="jsRegister();" /> <br/>
+	<input type="text" value="Scroll in milliseconds" id="scrollText" />
+	<input type="button" value="scroll" onclick="scroll();" /><br/>
+	<input type="button" value="update zoom to 100%" onclick="changeZoom();" /><br/>
+	<input type="button" value="update Clip Start (to playhead location)" onclick="updateStartClip();" /><br/>
+	<input type="button" value="update Clip End (to playhead location)" onclick="updateEndClip();" /><br/>
+	<input type="button" value="Remove All" onclick="reset();" /><br/>
+	<input type="text" value="In time in milliseconds" id="inTimeText" />
+	<input type="button" value="Update In Time" onclick="updateInTime();" /> <br/><br/>
+	<input type="button" value="Disable" onclick="disable();" /> <br/><br/>
+	<input type="button" value="Enable" onclick="enable();" /> <br/><br/>
+	<input type="button" value="Save" onclick="save();" /> <br/><br/>
+	<input type="button" value="Change Width" onclick="setWidth();" /> <br/><br/>
+	<input type="button" value="Set Selected" onclick="setSelected();" /> <br/><br/>
+	<input type="button" value="Set Error" onclick="setError();" /> 
+	<input type="test" value="Error id" id="errorId" /> 
+	<br/><br/>
+	<input type="button" value="Get Selected" onclick="getSelected();" /> <br/><br/>
+
+	<label>Clipping API</label><br/>
+	<input type="text" value="New clip length in milliseconds" id="clipLengthText" />
+	<input type="button" value="Add Clip" onclick="addClip();" />
+	<input type="text" value="New clip start time" id="clipStartText" />
+	<input type="button" value="Add Clip At" onclick="addClipAt();" /><br/>
+	<input type="text" value="Length in milliseconds" id="lengthText" />
+	<input type="button" value="Update Length" onclick="updateLength();" /><br/><br/>
+
+	<label>Cue Point API</label><br/>
+	<input type="button" value="Add Cue Point" onclick="addCuePoint();" />
+	<input type="button" value="load cue points" onclick="loadCuePoints();" />
+	<input type="text" value="New cue point start time" id="cuePointStartText" />
+	<input type="button" value="Update" onclick="updateCuePoint();" />
+	<input type="button" value="Add Cue Point At" onclick="addCuePointAt();" /><br/><br/>
+
+	<label>Trimming API</label><br/>
+	<input type="button" value="Add Clip" onclick="addTrimClip();" />
+
+</body>
+</html>

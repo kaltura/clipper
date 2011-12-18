@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="{parentDocument.imgWidth}" height="{parentDocument.imgHeight}"
+		   styleName="imageCanvas">
+	<mx:Script>
+		<![CDATA[
+			import mx.core.mx_internal;
+			import mx.events.FlexEvent;
+			
+			use namespace mx_internal;
+			
+//			static private const BYTES_LIMIT:Number = 50;
+			
+			[Embed(source="assets/flash/loaderwhite.swf")]
+			private const progressImage:Class;
+			
+
+			[Bindable]
+			private var _loading:Boolean = true;
+			[Bindable]
+			private var _thumbnailUrl:String;
+			[Bindable]
+			public static var loadThumb:Boolean = true;
+			
+			private var _reloaded:Boolean = false;
+			
+			protected function onLoadingComplete(event:Event):void
+			{
+				_loading = false;
+			}
+			
+			override public function set data(value:Object):void {
+				super.data = _thumbnailUrl = value as String;			
+				_loading = frame ? ! frame.content : true;
+			} 
+			
+			protected function frame_creationCompleteHandler(event:FlexEvent):void{
+				if (frame.content){
+					_loading = false;
+				}
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:Image id="loadingImg" verticalCenter="0" width="{parentDocument.imgWidth/3}" height="{parentDocument.imgHeight/3}" source="{progressImage}"
+			  horizontalCenter="0" verticalAlign="middle"
+			  visible="{_loading}"/>
+	<mx:Image id="frame" verticalCenter="0" horizontalCenter="0" width="{parentDocument.imgWidth-3}" height="{parentDocument.imgHeight-3}" source="{loadThumb ? _thumbnailUrl : null}" 
+			visible="{!_loading}" complete="onLoadingComplete(event)" creationComplete="frame_creationCompleteHandler(event)"/>
+</mx:Canvas>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" implements="view.TimeBasedAssets.ITimeBasedAsset" creationComplete="onCreationComplete()"
+		 horizontalScrollPolicy="off" toolTip="{resourceManager.getString('clipper','durationToolTip') + _toolTip}"
+		 verticalAlign="middle">
+	<mx:Metadata>
+		/**
+		*  The style of the right handle button
+		*/
+		[Style(name="rightHandleBtnStyle", type="String", inherit="no")]
+		/**
+		*  The style of the left handle button
+		*/
+		[Style(name="leftHandleBtnStyle", type="String", inherit="no")]
+		/**
+		*  The style of the left handle button
+		*/
+		[Style(name="innerBoxHeight", type="Number", inherit="no")]
+		/**
+		*  The style of the inner HBox
+		*/
+		[Style(name="innerBoxStyle", type="String", inherit="no")]
+			
+
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.vo.KalturaClipAttributes;
+			
+			import model.MediaClipVO;
+			
+			import mx.managers.CursorManager;
+			import mx.managers.CursorManagerPriority;
+			
+			private var _timeInMS:Number;
+			private var _lengthInMS:Number;
+			
+			private var _selectionState:Boolean;
+			private var _assetVo:MediaClipVO;
+			[Bindable]
+			private var _toolTip:String;
+			[Bindable]
+			private var _innerHeight:Number = 7;
+			private var _isError:Boolean = false;
+			private var _isReady:Boolean = false;
+			
+			
+			public function get assetVo():Object
+			{
+				return _assetVo;
+			}
+
+			public function set assetVo(value:Object):void
+			{
+				_assetVo = value as MediaClipVO;
+				_lengthInMS = _assetVo.clipAttributes.duration;
+				_timeInMS = _assetVo.clipAttributes.offset;
+			}
+
+			private function onCreationComplete():void {
+				_isReady = true;
+				reloadStyles();
+			}
+			
+			private function reloadStyles():void {
+				if (_isReady) {
+					startHandle.styleName = getStyle("leftHandleBtnStyle");
+					endHandle.styleName = getStyle("rightHandleBtnStyle");
+					innerBox.height = getStyle("innerBoxHeight");
+					innerBox.styleName = getStyle("innerBoxStyle");
+					
+					validateDisplayList();
+				}
+			}
+			
+			public function get lengthInMS():Number
+			{
+				return _lengthInMS;
+			}
+
+			public function set lengthInMS(value:Number):void
+			{
+				_lengthInMS = Math.round(value);
+				if (_assetVo)
+					_assetVo.clipAttributes.duration = value;
+				
+				//set tooltip
+				var date:Date = new Date();
+				date.hours = date.minutes = date.seconds = 0;
+				date.milliseconds = value;
+				_toolTip = dateFormatter.format(date);
+			}
+
+			public function get selectionState():Boolean
+			{
+				return _selectionState;
+			}
+			
+			public function set selectionState(value:Boolean):void
+			{
+				_selectionState = value;
+				setStyleByState();
+			}
+			
+			public function get assetWidth():Number
+			{
+				return width;
+			}
+			
+			public function set assetWidth(value:Number):void
+			{
+				width = value;
+				validateDisplayList();
+			}
+			
+			public function get startX():Number
+			{
+				return x;
+			}
+			
+			public function set startX(value:Number):void
+			{
+				x = value;
+			}
+
+			public function get timeInMS():Number
+			{
+				return _timeInMS;
+			}
+			
+			public function set timeInMS(value:Number):void
+			{
+				_timeInMS = Math.round(value);
+				if (_assetVo)
+					_assetVo.clipAttributes.offset = timeInMS;
+				
+				//validateDisplayList();
+			}
+			
+			public function setErrorState(value:Boolean):void {
+				_isError = value;
+				setStyleByState();
+			}
+			
+			private function setStyleByState():void {
+				if (_isError) {
+					if (_selectionState)
+						this.styleName = "selectedErrorClipItem";
+					else
+						this.styleName = "errorClipItem";
+				}
+				else if (_selectionState)
+					this.styleName = "selectedClipItem";
+				else
+					this.styleName = null;
+				
+				reloadStyles();
+
+			}
+			
+			[Embed("/assets/images/handle_cursor.pnd.png")]
+			private var customCursor:Class;
+			
+			private function showCursor():void
+			{
+				CursorManager.setCursor(customCursor, CursorManagerPriority.HIGH, -5, 0);
+			}
+			
+			private function removeCursor():void
+			{
+				CursorManager.removeAllCursors();
+			}
+
+
+		]]>
+	</mx:Script>
+	<mx:DateFormatter id="dateFormatter" formatString="JJ:NN:SS:QQQ"/>
+	<mx:Button id="startHandle" width="6" height="{this.height}" mouseOver="showCursor()" mouseOut="removeCursor()"/>
+	<mx:HBox id="innerBox" visible="{(this.width > 12)}" width="{this.width - startHandle.width - endHandle.width}"/>
+	<mx:Button id="endHandle" width="6" height="{this.height}" mouseOver="showCursor()" mouseOut="removeCursor()"/>
+</mx:HBox>

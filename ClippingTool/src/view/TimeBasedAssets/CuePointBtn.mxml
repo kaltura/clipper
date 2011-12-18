@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Button xmlns:mx="http://www.adobe.com/2006/mxml" toggle="true" useHandCursor="true" buttonMode="true"
+		   implements="view.TimeBasedAssets.ITimeBasedAsset" toolTip="{_toolTip}" creationComplete="onCreationComplete()">
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.vo.KalturaAdCuePoint;
+			import com.kaltura.vo.KalturaAnnotation;
+			import com.kaltura.vo.KalturaCuePoint;
+			
+			import mx.events.FlexEvent;
+			public var backgroundPoint:CuePointBtn;
+			
+			private var _timeInMS:Number;
+			private var _isReady:Boolean = false;
+			[Bindable]
+			private var _toolTip:String;
+			private var _isError:Boolean = false;
+			
+			private var _assetVo:KalturaCuePoint;
+			private var _selectionState:Boolean ;
+			
+			public function get assetVo():Object
+			{
+				return _assetVo;
+			}
+			
+			public function set assetVo(value:Object):void
+			{
+				_assetVo = value as KalturaCuePoint;
+				timeInMS = _assetVo.startTime;
+			}
+			public function get selectionState():Boolean
+			{
+				return _selectionState;
+			}
+
+			public function set selectionState(value:Boolean):void
+			{
+				_selectionState = selected = value;
+				setStyleByState();
+			}
+
+			public function get assetWidth():Number
+			{
+				return width;
+			}
+			
+			public function set assetWidth(value:Number):void
+			{
+				width = value;
+			}
+			
+			public function get startX():Number
+			{
+				return x;
+			}
+			
+			public function set startX(value:Number):void
+			{
+				x = value - (width/2);
+			}
+
+			public function get timeInMS():Number
+			{
+				return _timeInMS;
+			}
+			
+			public function set timeInMS(value:Number):void
+			{
+				_timeInMS = Math.round(value);
+				if (_assetVo) {
+					//if cue Point has end time
+					if (((_assetVo is KalturaAnnotation) || (_assetVo is KalturaAdCuePoint)) && (_assetVo.endTime != int.MIN_VALUE)) {
+						var duration:Number  = _assetVo.endTime - _assetVo.startTime;
+						_assetVo.endTime = _timeInMS + duration;	
+					}
+					_assetVo.startTime = _timeInMS;
+				}
+				//set tooltip
+				var date:Date = new Date();
+				date.hours = date.minutes = date.seconds = 0;
+				date.milliseconds = _timeInMS;
+				
+				// Forcing refresh on the tool tip and setting a new label for it.
+				_toolTip = null;
+				_toolTip = dateFormatter.format(date);
+			}
+			
+			public function setErrorState(value:Boolean):void {
+				_isError = value;
+				setStyleByState();
+			}
+			
+			private function setStyleByState():void {		
+				if (_isError) {
+					if (_selectionState)
+						this.styleName = "errorSelectedCuePointBtn";
+					else
+						this.styleName = "errorCuePointBtn";
+				}
+				else if (_selectionState)
+					this.styleName = "selectedCuePoint";
+				else
+					this.styleName = null;
+				
+				if (_isReady)
+					validateDisplayList();
+			}
+
+		
+
+			protected function onCreationComplete():void
+			{
+				_isReady = true;
+			}
+
+		]]>
+	</mx:Script>
+	<mx:DateFormatter id="dateFormatter" formatString="JJ:NN:SS:QQQ"/>
+</mx:Button>

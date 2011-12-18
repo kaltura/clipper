@@ -1,0 +1,638 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" xmlns:clipper="view.*" creationComplete="onCreationComplete(event)" backgroundColor="white" backgroundAlpha="0"
+				enabled="{!_model.loadingFlag}" implements="com.kaltura.applications.kClipInterface.IClippingAPI,com.kaltura.applications.kClipInterface.ITrimmingAPI,com.kaltura.applications.kClipInterface.ICuePointsAPI">
+	<mx:Metadata>
+		[ResourceBundle("clipper")]
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.KalturaClient;
+			import com.kaltura.applications.kClipInterface.IClippingAPI;
+			import com.kaltura.config.KalturaConfig;
+			import com.kaltura.events.KClipErrorCodes;
+			import com.kaltura.events.KClipEventTypes;
+			import com.kaltura.types.KalturaCuePointType;
+			import com.kaltura.types.KalturaMediaType;
+			import com.kaltura.utils.ObjectHelpers;
+			import com.kaltura.utils.ObjectUtil;
+			import com.kaltura.vo.KalturaAdCuePoint;
+			import com.kaltura.vo.KalturaAnnotation;
+			import com.kaltura.vo.KalturaBaseEntry;
+			import com.kaltura.vo.KalturaClipAttributes;
+			import com.kaltura.vo.KalturaCodeCuePoint;
+			import com.kaltura.vo.KalturaCuePoint;
+			import com.kaltura.vo.KalturaMediaEntry;
+			
+			import control.ClipperController;
+			
+			import events.ClipperExternalEvent;
+			import events.CuePointEvent;
+			import events.ExternalInterfaceEvent;
+			import events.JSEvent;
+			import events.SaveEvent;
+			import events.UIConfEvent;
+			
+			import model.ClipperModelLocator;
+			import model.MediaClipVO;
+			import model.MessageVO;
+			import model.clipperTimeline.IClipperBehaviour;
+			
+			import mx.binding.utils.BindingUtils;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.events.ResourceEvent;
+			import mx.events.StyleEvent;
+			import mx.managers.SystemManager;
+			import mx.utils.URLUtil;
+			
+			import view.behaviours.ClippingBehaviour;
+			import view.behaviours.CuePointBehaviour;
+			
+			/**
+			 * Clipper version
+			 * */
+			public var VERSION:String = "1.1.4";	
+			
+			public static const READY_STATE:String = "readyState";
+			static private const DEFAULT_CALLBACK:String = "kClipReady";
+			
+			private var _state:String = Clipper.CLIPPING_STATE;	
+			[Bindable]
+			/**
+			 * model
+			 * */
+			private var _model:ClipperModelLocator = ClipperModelLocator.getInstance();
+			private var _params:Object;
+			/**
+			 * currently showing locale code
+			 * */
+			private var _localeCode:String;
+			[Bindable]
+			private var _clipperBehaviour:IClipperBehaviour;
+			
+			private function loadSkin(path:String = ""):void {
+				var eventDispatcher:IEventDispatcher = StyleManager.loadStyleDeclarations(path);
+				eventDispatcher.addEventListener(StyleEvent.COMPLETE, onSkinLoaded, false, 0, true);
+				eventDispatcher.addEventListener(StyleEvent.ERROR, onSkinFailed, false, 0, true);
+			}
+			
+			/**
+			 * Load locale data.
+			 * @param localePath	path to the locale (.swf) file
+			 * @param language		locale code (i.e. en_US)
+			 * */
+			private function loadLocale(localePath:String, language:String):void {
+				_localeCode = language;
+				var eventDispatcher:IEventDispatcher = resourceManager.loadResourceModule(localePath);
+				eventDispatcher.addEventListener(ResourceEvent.ERROR, localeLoadCompleteHandler);
+				eventDispatcher.addEventListener(ResourceEvent.COMPLETE, localeLoadCompleteHandler);
+			}
+			
+			private function localeLoadCompleteHandler(event:ResourceEvent):void {
+				event.target.removeEventListener(ResourceEvent.COMPLETE, localeLoadCompleteHandler);
+				event.target.removeEventListener(ResourceEvent.ERROR, localeLoadCompleteHandler);
+				if (event.type == ResourceEvent.ERROR) {
+					Alert.show(event.errorText, "Locale Error");
+				}
+				var chain:Array = [_localeCode, "en_US"];;
+				resourceManager.localeChain = chain;
+				
+				// load skin
+				loadSkin(getUrl(_model.uiconfXML.cssUrl.toString())); 
+//			   loadSkin("http://localhost/Clipper/bin-debug/assets/clipper_skin.swf");
+				//loadSkin("http://localhost/Kclip/KClip/bin-debug/assets/clipper_skin.swf");
+			}
+
+			
+			private function onSkinFailed(event:StyleEvent):void {
+				trace ("load skin failed");
+			}
+			
+			/**
+			 * Skin loaded. Set configurations
+			 * */
+			private function onSkinLoaded(event:StyleEvent):void {
+				this.currentState = READY_STATE;
+				if (_params.state){
+					_state = _params.state;
+					updateClipperBehaviour();
+				}
+				if (_state == Clipper.TRIMMING_STATE)
+					_model.maxAllowedRows = 1;
+				addCallbacks();
+				
+				if (_params.jsreadyfunc){
+					dispatchEvent(new JSEvent(JSEvent.CALL_JS, _params.jsreadyfunc));
+				} else {
+					dispatchEvent(new JSEvent(JSEvent.CALL_JS, DEFAULT_CALLBACK));
+				}
+				
+				clipper.setState(_state);
+				clipper.serverUrl = _model.kc.protocol + _model.kc.domain;
+				if (_params.entryid)
+					clipper.entryId = _params.entryid;
+				if (_params.cuepointtype)
+					clipper.cuePointType = _params.cuepointtype;
+				//flashvars will override uiconf configuration
+				setFlashvarsToModel();
+				clipper.maxAllowedRows = _model.maxAllowedRows;
+
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CLIPPER_READY, null, true));
+			}
+			
+			/**
+			 * indicates if kClip is in ready state
+			 * */
+			public function isReady():Boolean {
+				return (currentState==READY_STATE);
+			}
+			
+			/**
+			 * update the zoom box selected index to the given index
+			 * */
+			public function updateZoomIndex(index:int):void {
+				clipper.setZoomSelectedIndex(index);
+			}
+			
+			/**
+			 * add callbacks according to Clipper state
+			 * */
+			private function addCallbacks():void {
+				if (ExternalInterface.available) {
+					ExternalInterface.addCallback("setEntryId", setEntryId);
+					ExternalInterface.addCallback("setKs", setKs);
+					ExternalInterface.addCallback("setWidth", setWidth);
+					ExternalInterface.addCallback("addJsListener", addJSListener);
+					ExternalInterface.addCallback("removeJsListener", removeJSListener);
+					ExternalInterface.addCallback("removeAll", removeAll);	
+					ExternalInterface.addCallback("deleteSelected", removeSelected);
+					ExternalInterface.addCallback("removeSelected", removeSelected);	
+					ExternalInterface.addCallback("setSelected", setSelected);	
+					ExternalInterface.addCallback("getSelected", getSelected);	
+					ExternalInterface.addCallback("getAll", getAll);	   
+					ExternalInterface.addCallback("scrollToPoint", scrollToPoint);	
+					ExternalInterface.addCallback("updateInTime", updateInTime);	
+					ExternalInterface.addCallback("getPlayheadLocation", getPlayheadLocation);	
+					ExternalInterface.addCallback("isSaveRequired", isSaveRequired);	
+					ExternalInterface.addCallback("setDisabled", setDisabled);	
+					ExternalInterface.addCallback("save", save);
+					ExternalInterface.addCallback("setError", setError);					
+					ExternalInterface.addCallback("isReady", isReady);					
+					ExternalInterface.addCallback("updateZoomIndex", updateZoomIndex);					
+					if (_state==Clipper.CUE_POINTS_STATE) {
+						ExternalInterface.addCallback("addCuePoint", addCuePoint);
+						ExternalInterface.addCallback("addCuePointAt", addCuePointAt);
+						ExternalInterface.addCallback("updateCuePoint", updateCuePoint);
+						ExternalInterface.addCallback("loadCuePoints", loadCuePoints);	
+						ExternalInterface.addCallback("setCuePointType", setCuePointType);
+					}
+					if (_state==Clipper.CLIPPING_STATE) {
+						ExternalInterface.addCallback("addClip", addClip);
+						ExternalInterface.addCallback("addClipWithData", addClipWithData);
+						ExternalInterface.addCallback("addClipAt", addClipAt);
+						ExternalInterface.addCallback("addClipWithDataAt", addClipWithDataAt);
+						ExternalInterface.addCallback("updateClipAttributes", updateClipAttributes);
+					}
+					else if (_state==Clipper.TRIMMING_STATE) {
+						ExternalInterface.addCallback("addClipForTrim", addClipForTrim);
+					}
+				}
+			}
+			
+			/**
+			 * set width and will adjust the timeline ruler to the new width
+			 * */
+			public function setWidth(width:Number):void {
+				this.width = width;
+			}
+			
+			/**
+			 * init configuration from flashvars or outer swf
+			 * */
+			public function init(params:Object):void {
+				_params = new Object();
+				var oLowers:Object = ObjectHelpers.lowerNoUnderscore(params);
+				for (var key:String in oLowers) {
+					_params[key] = oLowers[key];
+				}	
+				// create KalturaClient:
+				var configuration:KalturaConfig = new KalturaConfig();
+				configuration.partnerId = _params.partnerid;
+				configuration.ignoreNull = 1; //TODO: needed?
+				if (_params.protocol != null){
+					configuration.protocol = _params.protocol;
+				} else {
+					var url:String = root.loaderInfo.url;
+					configuration.protocol = URLUtil.isHttpURL(url) ? URLUtil.getProtocol(url) : "http";
+					configuration.protocol += "://"; 
+				}
+				var protocolIndex:int = String(_params.host).indexOf("://"); 
+				configuration.domain =  protocolIndex == -1 ? _params.host : String(_params.host).substr(protocolIndex + 3);  ;
+				configuration.clientTag = "clipper";
+				configuration.ks = _params.ks;	
+				_model.kc = new KalturaClient(configuration);
+				
+				BindingUtils.bindSetter(onUiconfLoaded, _model, "uiconfLoaded");
+				this.dispatchEvent(new UIConfEvent(UIConfEvent.GET_UICONF, _params.uiconfid));
+			}
+			
+			private function onAddedToStage(event:Event):void {
+				removeEventListener(Event.ADDED_TO_STAGE, onAddedToStage);
+				try {
+					if (root.stage && root.parent && root.stage == root.parent) {
+						init(Application.application.parameters);
+					}
+				}
+				catch (e:Error) {
+					trace ("cannot access root");	
+				}
+			}
+
+			private function onCreationComplete(event:FlexEvent):void
+			{	
+				Security.allowDomain('*');
+				systemManager.allowDomain("*");
+				
+				
+				var cm:ContextMenu = new ContextMenu();
+				cm.hideBuiltInItems();			
+				var version:ContextMenuItem = new ContextMenuItem("KClip version:" + VERSION);
+				cm.customItems.push(version);			
+				this.contextMenu = cm;
+		
+				addEventListener(Event.ADDED_TO_STAGE, onAddedToStage);			
+				var controller:ClipperController = new ClipperController(this);		
+			}
+			
+			private function onUiconfLoaded(value:Boolean):void {
+				if (value) {
+					loadLocale(getUrl(_model.uiconfXML.locale.path.toString()), _model.uiconfXML.locale.language.toString());
+					_state = _model.uiconfXML.state.length() > 0 ? _model.uiconfXML.state[0].toString() : _state;
+					updateClipperBehaviour();
+				}
+			}
+				
+			/**
+			 * decide if should use relative or absolute url.
+			 * if the given path is ablsolute, return the same string.
+			 * if the given path is relative, concatenate it to the swf url.
+			 * @param	given path
+			 * @return	path to use
+			 * */
+			private function getUrl(path:String):String {
+				var url:String;
+				if (path.indexOf("http") == 0) {
+					url = path;
+				}
+				else {
+					var base:String = _model.kc.protocol + _model.kc.domain;//  loaderInfo.url.substr(0, loaderInfo.url.lastIndexOf("/"));
+					url = base + path;
+				}
+				return url;
+			}
+			
+			/**
+			 * if a value was given as a flashvar, will set it
+			 * */
+			private function setFlashvarsToModel():void {
+				if (_params.maxallowedrows && (_state!=Clipper.TRIMMING_STATE))
+					_model.maxAllowedRows = _params.maxallowedrows;
+				if (_params.showadddeletebuttons)
+					_model.showAddDeleteButtons = _params.showadddeletebuttons == "true";
+				if (_params.showcontrolbar)
+					_model.showControlBar = _params.showcontrolbar == "true";
+				if (_params.showmessagebox)
+					_model.showMsgBox = _params.showmessagebox == "true";
+			}
+			
+			/**
+			 * register the given extFuncName to listenerString functions
+			 * */
+			public function addJSListener(listenerString:String, extFuncName:String) : void {
+				var registerEvent:ExternalInterfaceEvent = new ExternalInterfaceEvent(ExternalInterfaceEvent.ADD_LISTENER, listenerString, extFuncName);
+				dispatchEvent(registerEvent);
+			}
+			
+			/**
+			 * remove extFuncName from listenerString functions list
+			 * */
+			public function removeJSListener(listenerString:String, extFuncName:String) : void {
+				var removeEvent:ExternalInterfaceEvent = new ExternalInterfaceEvent(ExternalInterfaceEvent.REMOVE_LISTENER, listenerString, extFuncName);
+				dispatchEvent(removeEvent);
+			}
+			
+			/**
+			 * set given entry id to clipper
+			 * @param entryId the entry id to load
+			 * 
+			 */		
+			public function setEntryId(entryId:String):void {
+				clipper.entryId = entryId;
+			}
+			
+			/**
+			 * remove all time based assets from the timeline
+			 * */	
+			public function removeAll():void {
+				clipper.removeAll();
+			}
+			
+			/**
+			 * delete the selected time based assets
+			 * */
+			public function removeSelected():void {
+				clipper.deleteTimeBasedAsset();
+			}
+
+			/**
+			 * Set the asset associated with the given id as the selected asset
+			 * */
+			public function setSelected(id:String):void {
+				clipper.setSelectedById(id);
+			}
+			
+			/**
+			 * Get the asset associated with the selected asset
+			 * */
+			public function getSelected():Object {
+				return clipper.getSelectedAsset();
+			}
+			
+			/**
+			 * 
+			 * @return all time based assets from the current timeline
+			 * 
+			 */		
+			public function getAll():Array {
+				return clipper.getAll();
+			}
+			
+			/**
+			 * set the playhead value and scroll to the given point
+			 * if playhead is currently being dragged, this function will be ignored
+			 * @param timeInMS the new value of the playhead
+			 * 
+			 */		
+			public function scrollToPoint(timeInMS:Number, showThumbs:Boolean = true):void {
+				clipper.setPlayheadValue(timeInMS);
+				clipper.showThumbs = showThumbs;
+			}
+			
+			/**
+			 * update the given time as a start time of the selected time based asset 
+			 * @param timeInMS the new time
+			 * 
+			 */		
+			public function updateInTime(timeInMS:Number):void {
+				clipper.updateStartTime(timeInMS);
+			}
+			
+			/**
+			 * return the playhead location in milliseconds
+			 * */
+			public function getPlayheadLocation():Number {
+				return clipper.getPlayheadLocation();
+			}
+			
+			/**
+			 * return true if there are unsaved changes
+			 * */
+			public function isSaveRequired():Boolean {
+				return clipper.isSaveRequired();
+			}
+			
+			/**
+			 * disable the clipper view
+			 * */
+			public function setDisabled(value:Object):void {
+				var boolValue:Boolean;
+				//from js
+				if (value is String)
+					boolValue = (value == 'true');
+				else if (value is Boolean)
+					boolValue = value;
+				clipper.setDisabled(boolValue);
+			}
+			
+			private function dispatchErrorEvent(message:String, code:String = ''): void {
+				var messageVo:MessageVO = new MessageVO();
+				messageVo.messageText = message;
+				messageVo.messageCode = code;
+				dispatchEvent(new ClipperExternalEvent(KClipEventTypes.CLIPPER_ERROR, messageVo, true));
+			}
+			
+			/**
+			 * Add a new clip 
+			 * @param clipLengthInMS the length of the clip in milliseconds
+			 * 
+			 */		
+			public function addClip(clipLengthInMS:Number):void {
+				if (_state != Clipper.CLIPPING_STATE) 
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				
+				clipper.addClip(clipLengthInMS, getMediaClipVo());
+			}
+			
+			/**
+			 * Add a new clip on entire movie
+			 * 
+			 */		
+			public function addClipForTrim():void {
+				if (_state != Clipper.TRIMMING_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				clipper.addClipForTrimming(getMediaClipVo()); 
+			}
+			
+			/**
+			 * Add a new clip at the given time stamp
+			 * @param startTimeInMS the start time of the clip, in milliseconds
+			 * @param clipLengthInMS the length of the clip, in milliseconds
+			 * 
+			 */		
+			public function addClipAt(startTimeInMS:Number, clipLengthInMS:Number):void {
+				if (_state != Clipper.CLIPPING_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				clipper.addClipAt(startTimeInMS, clipLengthInMS, getMediaClipVo());
+			}
+			
+			/**
+			 * Add a new clip with data
+			 * */
+			public function addClipWithData(clipLengthInMS:Number, entry:Object):void {
+				if (_state != Clipper.CLIPPING_STATE) 
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				
+				clipper.addClip(clipLengthInMS, getMediaClipVo(entry));
+			}
+			
+			/**
+			 * Add a new clip with data at the given time stamp
+			 * @param startTimeInMS the start time of the clip, in milliseconds
+			 * @param clipLengthInMS the length of the clip, in milliseconds
+			 * @param entry the data of the clip
+			 */	
+			public function addClipWithDataAt(startTimeInMS:Number, clipLengthInMS:Number, entry:Object):void {
+				if (_state != Clipper.CLIPPING_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				clipper.addClipAt(startTimeInMS, clipLengthInMS, getMediaClipVo(entry));
+			}
+			
+			private function getMediaClipVo(entry:Object = null):MediaClipVO {
+				var mediaEntry:KalturaMediaEntry = new KalturaMediaEntry();
+				mediaEntry.mediaType = KalturaMediaType.VIDEO;
+				if (entry) {
+					ObjectUtil.copyObject(entry, mediaEntry);
+				}
+				
+				var mediaClip:MediaClipVO = new MediaClipVO(mediaEntry, new KalturaClipAttributes());
+				return mediaClip;
+			}
+			
+			/**
+			 * Determines the type of cue points that will be created : ad/code/annotation
+			 * */
+			public function setCuePointType(type:String):void {
+				clipper.cuePointType = type;
+			}
+			
+			/**
+			 * Update the selected clip with the given attributes object 
+			 * @param attributes should contain "offset" and "duration" properties
+			 * 
+			 */		
+			public function updateClipAttributes(attributes:Object):void {
+				if (_state != Clipper.CLIPPING_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				else if (attributes["offset"]==null ||  attributes["duration"]==null)
+					dispatchErrorEvent(resourceManager.getString('clipper','missingUpdateParams'), KClipErrorCodes.CLIP_UPDATE_FAILED);
+				else
+					clipper.updateSelectedAssetValues(attributes["offset"], attributes["duration"]);
+			}
+			
+			/**
+			 * save 
+			 * */
+			public function save():void {
+				clipper.save();
+			}
+			
+			/**
+			 * Set the given value as an error state of the given asset ID
+			 * */
+			public function setError(value:Boolean, assetId:String):void {
+				clipper.setError(value, assetId);
+			}
+			
+			/**
+			 * Add a cue point on the playhead current position 
+			 * 
+			 */		
+			public function addCuePoint(object:Object):void {
+				if (_state != Clipper.CUE_POINTS_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				var cuePoint:KalturaCuePoint = getCuePointFromObject(object);
+				
+				if (cuePoint)
+					clipper.addCuePoint(cuePoint);
+				else
+					dispatchErrorEvent(resourceManager.getString('clipper','unknownCuePointType'), KClipErrorCodes.UNKNOWN_CUEPOINT_TYPE);
+			} 
+			
+			/**
+			 * create Cue point object according to given object type
+			 * */
+			private function getCuePointFromObject(object:Object):KalturaCuePoint {
+				var cuePoint:KalturaCuePoint;		
+				if (object["cuePointType"]){
+					switch (object["cuePointType"]) {
+						case KalturaCuePointType.AD:
+							cuePoint = new KalturaAdCuePoint();
+							break;
+						case KalturaCuePointType.CODE:
+							cuePoint = new KalturaCodeCuePoint();
+							break;
+						case KalturaCuePointType.ANNOTATION:
+							cuePoint = new KalturaAnnotation();
+							break;
+					}	
+				}
+				
+				if (cuePoint) 
+					ObjectUtil.copyObject(object, cuePoint);
+								
+				return cuePoint;				
+			}
+			
+			/**
+			 * Add a cue point at the given time, in milliseconds 
+			 * @param cuePoint cue point object with the time
+			 * 
+			 */		
+			public function addCuePointAt (object:Object):void {
+				if (_state != Clipper.CUE_POINTS_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				var cuePoint:KalturaCuePoint = getCuePointFromObject(object);
+				if (cuePoint)
+					clipper.addCuePointAt(cuePoint.startTime, cuePoint);
+				else
+					dispatchErrorEvent(resourceManager.getString('clipper','unknownCuePointType'), KClipErrorCodes.UNKNOWN_CUEPOINT_TYPE);
+			}
+			
+			/** 
+			 * update the given kalturaCuePoint
+			 * @param object
+			 * 
+			 */		
+			public function updateCuePoint(object:Object):void {
+				if (_state != Clipper.CUE_POINTS_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				
+				var cuePoint:KalturaCuePoint = getCuePointFromObject(object);
+				if (cuePoint)
+					clipper.updateAssetVo(cuePoint);
+				else
+					dispatchErrorEvent(resourceManager.getString('clipper','unknownCuePointType'), KClipErrorCodes.UNKNOWN_CUEPOINT_TYPE);
+			}
+			
+			/**
+			 * load cue points of current entry 
+			 * 
+			 */		
+			public function loadCuePoints():void {
+				if (_state != Clipper.CUE_POINTS_STATE)
+					dispatchErrorEvent(resourceManager.getString('clipper','wrongState'), KClipErrorCodes.WRONG_STATE);
+				dispatchEvent(new CuePointEvent(CuePointEvent.LIST_CUE_POINTS, clipper.entryId ));
+			}
+
+			public function setKs(ks:String):void
+			{
+				_model.kc.ks = ks;
+			}
+			
+			private function updateClipperBehaviour():void{
+				switch (_state){
+					case Clipper.CLIPPING_STATE:
+					case Clipper.TRIMMING_STATE:
+						_clipperBehaviour = new ClippingBehaviour(resourceManager);
+						break;
+					case Clipper.CUE_POINTS_STATE:
+						_clipperBehaviour = new CuePointBehaviour(resourceManager);
+				}
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:states>
+		<mx:State name="{READY_STATE}">
+			<mx:AddChild>
+				<clipper:Clipper id="clipper" width="{this.width}" height="{this.height}" entry="{_model.currentEntry}" isLoading="{_model.loadingFlag}"
+								 zoomValues="{_model.zoomBoxValues}" 
+								 showAddDeleteBtns="{_model.showAddDeleteButtons}" showControlBar="{_model.showControlBar}"
+								 showMessageBox="{_model.showMsgBox}"
+								 behaviour="{_clipperBehaviour}"
+								 message="{_model.message}" itemsAC="{_model.itemsAC}"
+								 saveCompleted="{_model.saveComplete}" saveFailed="{_model.saveFailed}"/>
+			</mx:AddChild>
+		</mx:State>
+	</mx:states>
+</mx:Application>

@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!---
+Generic assets layer - can be cue points or clips layer
+-->
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" verticalGap="0" 
+		 horizontalScrollPolicy="off" creationComplete="onCreationComplete(event)" backgroundAlpha="0">
+	<mx:Metadata>
+		/**
+		* dispatched when the displayed message should change
+		* */
+		[Event(name="displayMessage", type="events.ClipperMessageEvent")]
+		/**
+		* dispatched when an asset was clicked
+		* */
+		[Event(name="assetClick", type="events.TimeBaseAssetEvent")]
+		/**
+		* dispatched when an asset start point changed
+		* */
+		[Event(name="assetStartChanged", type="events.TimeBaseAssetEvent")]
+		/**
+		* dispatched when an asset end point changed
+		* */
+		[Event(name="assetEndChanged", type="events.TimeBaseAssetEvent")]
+		/**
+		* dispatched when an asset is being dragged
+		* */
+		[Event(name="assetDrag", type="events.TimeBaseAssetEvent")]
+		/**
+		* dispatched when an asset is being dragged
+		* */
+		[Event(name="assetSelected", type="events.TimeBaseAssetEvent")]
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import events.ClipperExternalEvent;
+			import events.ClipperMessageEvent;
+			import events.TimeBaseAssetEvent;
+			
+			import model.MessageVO;
+			
+			import mx.binding.utils.BindingUtils;
+			import mx.containers.Canvas;
+			import mx.events.FlexEvent;
+			
+			import view.TimeBasedAssets.ITimeBasedAsset;
+			private var _offset:Number;
+			private var _numOfRows:int;
+			private var _rowsWidth:Number;
+			private var _tbAssetsArr:Array;
+			protected var selectedAsset:ITimeBasedAsset;
+			
+			public function get tbAssetsArr():Array
+			{
+				return _tbAssetsArr;
+			}
+
+			public function set tbAssetsArr(value:Array):void
+			{
+				_tbAssetsArr = value;
+			}
+
+			/**
+			 * the start x of the buttons
+			 * */
+			public function set offset(value:Number) : void {
+				_offset = value;
+			}
+			
+			public function get offset():Number {
+				return _offset;
+			}
+			
+			[Bindable]
+			/**
+			 * the width of cue points row
+			 * */
+			public function get rowsWidth():Number
+			{
+				return _rowsWidth;
+			}
+			
+			public function set rowsWidth(value:Number):void
+			{
+				_rowsWidth = value;
+			}
+			
+			/**
+			 * Number of cue point rows per this container. This value will determine the height of each row
+			 * */
+			public function get numOfRows():int
+			{
+				return _numOfRows;
+			}
+			
+			public function set numOfRows(value:int):void
+			{
+				if (value!=0) {
+					_numOfRows = value;
+					this.removeAllChildren();
+					var rowHeight:int = this.height / _numOfRows;
+					for (var i:int = 0; i<_numOfRows; i++) {
+						var row:Canvas = new Canvas;
+						BindingUtils.bindProperty(row, "width", this, "rowsWidth"); 
+						row.width = this.width;
+						row.height = rowHeight;
+						row.horizontalScrollPolicy = "off";
+						row.styleName = "layerCanvas";
+						this.addChild(row);
+					}
+				}
+			}
+			
+			protected function dispatchMessageEvent(message:String, code:String = ""):void {
+				var messageEvent:ClipperMessageEvent = new ClipperMessageEvent(ClipperMessageEvent.DISPLAY_MESSAGE, message, code, true);
+				dispatchEvent(messageEvent);
+			}
+			
+			/**
+			 * adds the a new cue point to the given position
+			 * */
+			public function addToCanvas(asset:ITimeBasedAsset, addAsNew:Boolean, notSaved:Boolean = true):Boolean {
+				for (var i:int = numChildren-1; i >= 0; i--) {
+					var curCanvas:Canvas = getChildAt(i) as Canvas;
+					var positionTaken:Boolean = false;
+					for (var j:int = 0; j < curCanvas.numChildren; j++) {
+						var curChild:ITimeBasedAsset = curCanvas.getChildAt(j) as ITimeBasedAsset;
+						if (curChild == asset)
+							continue;
+						if (isPositionOverlapPoint(asset.startX, asset.assetWidth, curChild.startX, curChild.assetWidth)) {
+							positionTaken = true;
+							break;
+						}	
+					}
+					if (positionTaken) {
+						//if last available place is also taken
+						if (i==0) {
+							return false;
+						}
+					} 
+					else {
+						if (addAsNew) {
+							tbAssetsArr.push(asset);
+						}
+						else {
+							(asset as DisplayObject).parent.removeChild(asset as DisplayObject);
+						}
+						curCanvas.addChild(asset as DisplayObject);
+						return true;
+					}
+				}	
+				return false;
+			}
+			
+			/**
+			 * check if given new point overlaps the given existing point boundaries
+			 * */
+			protected function isPositionOverlapPoint(newX:Number, newWidth:Number, existingX:Number, existingWidth:Number) : Boolean {
+				if ((((newX+ newWidth) >= existingX) && ((newX+ newWidth) <=(existingX + existingWidth))) 
+					|| ((newX >= existingX) && (newX <= (existingX + existingWidth)))
+					|| (((existingX + existingWidth) >= newX) && ((existingX + existingWidth) <= (newX + newWidth)))) {
+					return true
+				}
+				
+				return false;
+			}
+			
+			public function relocateTimeBasedAssets(ratio:Number, widthRatio:Number) : void {
+			}
+			
+
+
+			protected function onCreationComplete(event:FlexEvent):void
+			{
+				tbAssetsArr = new Array();
+			}
+			
+			/**
+			 * set the given asset as selected, unselect all others
+			 * */
+			public function setSelectedTimeBasedAsset(newSelected:ITimeBasedAsset):void {
+				if (selectedAsset)
+					selectedAsset.selectionState = false;
+				newSelected.selectionState = true;
+				selectedAsset = newSelected;
+
+				dispatchEvent(new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_SELECTED, selectedAsset));
+			}
+			
+			/**
+			 * return the assetVo associated with the selected asset
+			 * */
+			public function getSelectedAssetVo():Object {
+				if (selectedAsset)
+					return selectedAsset.assetVo;
+				
+				return null;
+			}
+			
+			/**
+			 * will set the asset assiciated with given id and return it
+			 * */
+			public function setSelectedByAssetId(newSelectedId:String):ITimeBasedAsset {
+				for each (var tbAsset:ITimeBasedAsset in tbAssetsArr) {
+					if (tbAsset.assetVo && tbAsset.assetVo["id"]==newSelectedId) {
+						setSelectedTimeBasedAsset(tbAsset);
+						return tbAsset;
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 * remove all time based assets
+			 * */
+			public function removeAll():void {
+				for each (var tbAsset:DisplayObject in tbAssetsArr) {
+					tbAsset.parent.removeChild(tbAsset);
+				}
+				tbAssetsArr = new Array();
+				selectedAsset = null;
+			}
+			
+			/**
+			 * delete the selected child
+			 * */
+			public function removeSelected():ITimeBasedAsset {
+				for (var i:int = 0; i<tbAssetsArr.length; i++) {
+					var curAsset:ITimeBasedAsset = tbAssetsArr[i] as ITimeBasedAsset;
+					if (curAsset==selectedAsset) {
+						tbAssetsArr.splice(i, 1);
+						(curAsset as DisplayObject).parent.removeChild(curAsset as DisplayObject);
+						selectedAsset = null;
+						return curAsset;
+					}
+				}
+				return null;
+			}
+			
+			public function updateSelectedStartX(timeInMS:Number, ratio:Number):void {
+				selectedAsset.timeInMS = timeInMS;
+				selectedAsset.startX = timeInMS * ratio + offset;
+			}
+			
+			/**
+			 * will try to set the given position to the given asset. If parent canvas
+			 * already contains an asset in the given position, will remove it and try to add it to another canvas
+			 * */
+			protected function locateTimeBasedAsset(asset:ITimeBasedAsset) : Boolean {
+				var canvasParent:Canvas = (asset as DisplayObject).parent as Canvas;
+				if ((asset.startX + asset.assetWidth) > canvasParent.width)
+					return false;
+				var childIndex:int = canvasParent.getChildIndex(asset as DisplayObject);
+				for (var i:int= 0; i<canvasParent.numChildren; i++) {
+					if (childIndex==i)
+						continue;
+					var curChild:ITimeBasedAsset = canvasParent.getChildAt(i) as ITimeBasedAsset;
+					if ((curChild as DisplayObject).visible && isPositionOverlapPoint(asset.startX, asset.assetWidth, curChild.startX, curChild.assetWidth)) {
+						//if child wasn't removed yet
+						//if ((asset as DisplayObject).parent==canvasParent)
+						//	canvasParent.removeChild(asset as DisplayObject);
+						if (!this.addToCanvas(asset, false)) {
+							//couldn't find a place for the point- add it back
+						//	canvasParent.addChild(asset as DisplayObject);
+							return false;
+						}
+					}
+				}
+
+				return true;
+			}
+			
+			/**
+			 * update values accordingly
+			 * @return true if asset was found and update was done
+			 * */
+			public function updateAssetVo(assetVO:Object, ratio:Number):Boolean {
+				if (selectedAsset) {
+					selectedAsset.assetVo = assetVO;
+					var newX:Number =selectedAsset.timeInMS * ratio + offset;
+					if (newX != selectedAsset.startX) {
+						selectedAsset.startX = newX;
+						dispatchEvent(new TimeBaseAssetEvent(TimeBaseAssetEvent.ASSET_START_CHANGED, selectedAsset, false));
+					}
+					return true;
+				}
+				return false;
+			}
+
+		]]>
+	</mx:Script>
+	
+</mx:VBox>
