@@ -1,3 +1,30 @@
+// ===================================================================================================
+//                           _  __     _ _
+//                          | |/ /__ _| | |_ _  _ _ _ __ _
+//                          | ' </ _` | |  _| || | '_/ _` |
+//                          |_|\_\__,_|_|\__|\_,_|_| \__,_|
+//
+// This file is part of the Kaltura Collaborative Media Suite which allows users
+// to do with audio, video, and animation what Wiki platfroms allow them to do with
+// text.
+//
+// Copyright (C) 2006-2011  Kaltura Inc.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+// @ignore
+// ===================================================================================================
 package com.kaltura.vo
 {
 	import com.kaltura.vo.KalturaFilter;
@@ -19,19 +46,19 @@ package com.kaltura.vo
 
 		/** 
 		* 		* */ 
-		public var sumTimeViewedLessThanOrEqual : Number = NaN;
+		public var sumTimeViewedLessThanOrEqual : Number = Number.NEGATIVE_INFINITY;
 
 		/** 
 		* 		* */ 
-		public var sumTimeViewedGreaterThanOrEqual : Number = NaN;
+		public var sumTimeViewedGreaterThanOrEqual : Number = Number.NEGATIVE_INFINITY;
 
 		/** 
 		* 		* */ 
-		public var averageTimeViewedLessThanOrEqual : Number = NaN;
+		public var averageTimeViewedLessThanOrEqual : Number = Number.NEGATIVE_INFINITY;
 
 		/** 
 		* 		* */ 
-		public var averageTimeViewedGreaterThanOrEqual : Number = NaN;
+		public var averageTimeViewedGreaterThanOrEqual : Number = Number.NEGATIVE_INFINITY;
 
 		/** 
 		* 		* */ 
@@ -163,19 +190,19 @@ package com.kaltura.vo
 
 		/** 
 		* 		* */ 
-		public var countBandwidthLessThanOrEqual : String;
+		public var countBandwidthLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var countBandwidthGreaterThanOrEqual : String;
+		public var countBandwidthGreaterThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var countStorageLessThanOrEqual : String;
+		public var countStorageLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var countStorageGreaterThanOrEqual : String;
+		public var countStorageGreaterThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
@@ -195,19 +222,19 @@ package com.kaltura.vo
 
 		/** 
 		* 		* */ 
-		public var aggregatedStorageLessThanOrEqual : String;
+		public var aggregatedStorageLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var aggregatedStorageGreaterThanOrEqual : String;
+		public var aggregatedStorageGreaterThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var aggregatedBandwidthLessThanOrEqual : String;
+		public var aggregatedBandwidthLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var aggregatedBandwidthGreaterThanOrEqual : String;
+		public var aggregatedBandwidthGreaterThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
@@ -443,19 +470,19 @@ package com.kaltura.vo
 
 		/** 
 		* 		* */ 
-		public var countLiveStreamingBandwidthLessThanOrEqual : String;
+		public var countLiveStreamingBandwidthLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var countLiveStreamingBandwidthGreaterThanOrEqual : String;
+		public var countLiveStreamingBandwidthGreaterThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var aggregatedLiveStreamingBandwidthLessThanOrEqual : String;
+		public var aggregatedLiveStreamingBandwidthLessThanOrEqual : String = null;
 
 		/** 
 		* 		* */ 
-		public var aggregatedLiveStreamingBandwidthGreaterThanOrEqual : String;
+		public var aggregatedLiveStreamingBandwidthGreaterThanOrEqual : String = null;
 
 		override public function getUpdateableParamKeys():Array
 		{

@@ -1,3 +1,30 @@
+// ===================================================================================================
+//                           _  __     _ _
+//                          | |/ /__ _| | |_ _  _ _ _ __ _
+//                          | ' </ _` | |  _| || | '_/ _` |
+//                          |_|\_\__,_|_|\__|\_,_|_| \__,_|
+//
+// This file is part of the Kaltura Collaborative Media Suite which allows users
+// to do with audio, video, and animation what Wiki platfroms allow them to do with
+// text.
+//
+// Copyright (C) 2006-2011  Kaltura Inc.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+// @ignore
+// ===================================================================================================
 package com.kaltura.types
 {
 	public class KalturaLanguage
@@ -39,9 +66,9 @@ package com.kaltura.types
 		public static const FI : String = 'Finnish';
 		public static const FR : String = 'French';
 		public static const FY : String = 'Frisian';
-		public static const GL : String = 'Galician';
-		public static const GD : String = 'Gaelic (Scottish)';
 		public static const GV : String = 'Gaelic (Manx)';
+		public static const GD : String = 'Gaelic (Scottish)';
+		public static const GL : String = 'Galician';
 		public static const KA : String = 'Georgian';
 		public static const DE : String = 'German';
 		public static const EL : String = 'Greek';
@@ -49,13 +76,13 @@ package com.kaltura.types
 		public static const GN : String = 'Guarani';
 		public static const GU : String = 'Gujarati';
 		public static const HA : String = 'Hausa';
-		public static const HE : String = 'Hebrew';
 		public static const IW : String = 'Hebrew';
+		public static const HE : String = 'Hebrew';
 		public static const HI : String = 'Hindi';
 		public static const HU : String = 'Hungarian';
 		public static const IS : String = 'Icelandic';
-		public static const ID : String = 'Indonesian';
 		public static const IN : String = 'Indonesian';
+		public static const ID : String = 'Indonesian';
 		public static const IA : String = 'Interlingua';
 		public static const IE : String = 'Interlingue';
 		public static const IU : String = 'Inuktitut';
@@ -137,7 +164,7 @@ package com.kaltura.types
 		public static const UR : String = 'Urdu';
 		public static const UZ : String = 'Uzbek';
 		public static const VI : String = 'Vietnamese';
-		public static const VO : String = 'Volap?k';
+		public static const VO : String = 'Volapuk';
 		public static const CY : String = 'Welsh';
 		public static const WO : String = 'Wolof';
 		public static const XH : String = 'Xhosa';
