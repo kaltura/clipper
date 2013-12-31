@@ -34,7 +34,7 @@ package com.kaltura.applications.kClipInterface
 		 * @param timeInMS the new value of the playhead
 		 * 
 		 */		
-		function scrollToPoint(timeInMS:Number):void 
+		function scrollToPoint(timeInMS:Number,showThumbs:Boolean = true):void 
 		
 		/**
 		 * update the given time as a start time of the selected time based asset 

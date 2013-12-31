@@ -192,7 +192,7 @@ package model.clipperTimeline
 					{
 						xPos = Math.round(this.mx_internal::getXFromValue(val));
 						var tLength:int = smallTickLength;
-						var tColor:String = smallTickColor;
+						var tColor:Number = smallTickColor;
 						if (tickCounter%tickGroupCount ==0) {
 							tLength = bigTickLength;
 							tColor = bigTickColor;

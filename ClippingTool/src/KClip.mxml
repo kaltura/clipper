@@ -44,6 +44,8 @@
 			import mx.events.StyleEvent;
 			import mx.managers.SystemManager;
 			import mx.utils.URLUtil;
+			import flash.system.Security;
+
 			
 			import view.behaviours.ClippingBehaviour;
 			import view.behaviours.CuePointBehaviour;
@@ -160,6 +162,7 @@
 			private function addCallbacks():void {
 				if (ExternalInterface.available) {
 					ExternalInterface.addCallback("setEntryId", setEntryId);
+					ExternalInterface.addCallback("setDuration", setExternalDuration);
 					ExternalInterface.addCallback("setKs", setKs);
 					ExternalInterface.addCallback("setWidth", setWidth);
 					ExternalInterface.addCallback("addJsListener", addJSListener);
@@ -253,7 +256,6 @@
 				Security.allowDomain('*');
 				systemManager.allowDomain("*");
 				
-				
 				var cm:ContextMenu = new ContextMenu();
 				cm.hideBuiltInItems();			
 				var version:ContextMenuItem = new ContextMenuItem("KClip version:" + VERSION);
@@ -330,6 +332,10 @@
 				clipper.entryId = entryId;
 			}
 			
+			public function setExternalDuration(duration:String):void {
+				clipper.externalDuration = duration
+			}
+			
 			/**
 			 * remove all time based assets from the timeline
 			 * */	
@@ -373,7 +379,7 @@
 			 * @param timeInMS the new value of the playhead
 			 * 
 			 */		
-			public function scrollToPoint(timeInMS:Number, showThumbs:Boolean = true):void {
+			public function scrollToPoint(timeInMS:Number ,showThumbs:Boolean = true):void {
 				clipper.setPlayheadValue(timeInMS);
 				clipper.showThumbs = showThumbs;
 			}

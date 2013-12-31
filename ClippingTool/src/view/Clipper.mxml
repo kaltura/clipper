@@ -8,6 +8,7 @@
 			import com.kaltura.events.KClipErrorCodes;
 			import com.kaltura.events.KClipEventTypes;
 			import com.kaltura.types.KalturaCuePointType;
+			import com.kaltura.utils.ObjectUtil;
 			import com.kaltura.vo.KalturaAdCuePoint;
 			import com.kaltura.vo.KalturaAnnotation;
 			import com.kaltura.vo.KalturaBaseEntry;
@@ -146,6 +147,7 @@
 			 * */
 			private var _isReady:Boolean;
 			private var _entryId:String;
+			private var _externalDuraion:Number;
 			public var cuePointType:String = KalturaCuePointType.AD;
 			private var _saveCompleted:Boolean;
 			private var _saveFailed:Boolean;
@@ -361,7 +363,20 @@
 			public function set entry(value:KalturaBaseEntry):void
 			{
 				_entry = value;
-				var duration:Number  = (_entry as KalturaPlayableEntry).msDuration;
+				var kalturaPlayableEntry:KalturaPlayableEntry = (_entry as KalturaPlayableEntry);
+				var duration:Number  = 0;
+				if (kalturaPlayableEntry && kalturaPlayableEntry.msDuration) {
+				  duration = (_entry as KalturaPlayableEntry).msDuration;
+				}
+				if (_externalDuraion > 0) {
+					duration = _externalDuraion;
+					if (_slider) {
+						sliderCanvas.removeChild(_slider);	
+						_slider = null;
+					}
+				}
+				
+					
 				if (duration) {
 					if (!_slider) {
 						_slider = new ClipperSlider;
@@ -410,6 +425,16 @@
 				}
 			}
 			
+			public function set externalDuration(duration:String):void {
+				_externalDuraion = Number(duration);
+				if (_entry){
+					var copyEntry:KalturaBaseEntry = new KalturaBaseEntry();
+					ObjectUtil.copyObject(_entry,copyEntry);
+					entry = copyEntry;
+				}
+				
+			}
+									
 			private function resetAllItems():void {
 				_addedItemsAC = new ArrayCollection();
 				_updatedItemsAC = new ArrayCollection();

@@ -5,6 +5,7 @@ package commands
 	import com.kaltura.events.KalturaEvent;
 	import com.kaltura.types.KalturaEntryStatus;
 	import com.kaltura.vo.KalturaBaseEntry;
+	import com.kaltura.vo.KalturaLiveStreamEntry;
 	import com.kaltura.vo.KalturaMediaEntry;
 	
 	import events.BaseEntryEvent;
@@ -30,6 +31,9 @@ package commands
 		
 		public function result(event:KalturaEvent):void {
 			var resultEntry:KalturaBaseEntry = event.data as KalturaBaseEntry;
+			if (resultEntry == null) {
+				resultEntry = event.data as KalturaLiveStreamEntry;
+			}
 			var messageVo:MessageVO = new MessageVO();
 			if (resultEntry.status!=KalturaEntryStatus.READY) {
 				messageVo.messageText = ResourceManager.getInstance().getString('clipper','entryNotReadyError');
