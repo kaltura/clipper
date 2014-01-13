@@ -7,6 +7,7 @@ package commands
 	import com.kaltura.vo.KalturaBaseEntry;
 	import com.kaltura.vo.KalturaLiveStreamEntry;
 	import com.kaltura.vo.KalturaMediaEntry;
+	import com.kaltura.vo.KalturaLiveStreamAdminEntry;KalturaLiveStreamAdminEntry;
 	
 	import events.BaseEntryEvent;
 	
